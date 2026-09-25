@@ -3,18 +3,16 @@ name: OwnTV Rebrand
 # Builds the rebrand toolchain image on GitHub Actions, then runs it to produce
 # rebranded release APKs and publish them to the target repo.
 #
+# CI only builds the image; all rebranding happens inside the container when it
+# runs: it pulls the project, renames activities/package/applicationId, generates
+# a fresh signing key, builds the release APKs and pushes them to TARGET_REPO.
+#
 # Required repository secrets (Settings > Secrets and variables > Actions):
 #   GPR_USER        GitHub packages username with read access to ahXN00/OwnTV_Core
 #   GPR_TOKEN       Read token for the OwnTV core deps (tv.own.owntv:core/:player-core)
 #   GH_TOKEN        Token with push access to the TARGET_REPO below
-#   KEYSTORE_B64    (after the FIRST run) base64 of the .jks copied from
-#                   the first run's artifact. LEAVE UNSET for the first run.
-#   KEYSTORE_ALIAS  Key alias of that keystore
-#   KEYSTORE_PASS   Its key/store password
 #
-# The first run generates + signs with a fresh keystore. Save it from the
-# "owntv-rebranded-apks" artifact and store it in the KEYSTORE_* secrets so
-# every later release keeps the same signature (required for OTA updates).
+# No permanent keystore is used: every run signs with a newly generated key.
 
 on:
   push:
@@ -100,9 +98,6 @@ jobs:
           -e SOURCE_BRANCH="${{ inputs.source_branch || 'main' }}"
           -e VERSION_NAME="${{ inputs.version_name || '1.0.0' }}"
           -e VERSION_CODE="${{ inputs.version_code || 100 }}"
-          -e KEYSTORE_B64="${{ secrets.KEYSTORE_B64 }}"
-          -e KEYSTORE_ALIAS="${{ secrets.KEYSTORE_ALIAS }}"
-          -e KEYSTORE_PASS="${{ secrets.KEYSTORE_PASS }}"
           -v "$RUNNER_TEMP/owntv-work:/work"
           "${{ env.IMAGE }}:${{ github.sha }}"
       - name: Upload APKs and signing info
