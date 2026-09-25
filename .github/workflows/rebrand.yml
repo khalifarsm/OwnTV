@@ -17,6 +17,9 @@ name: OwnTV Rebrand
 # every later release keeps the same signature (required for OTA updates).
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version_name:
@@ -89,10 +92,10 @@ jobs:
           -e GH_TOKEN="${{ secrets.GH_TOKEN }}"
           -e GPR_USER="${{ secrets.GPR_USER }}"
           -e GPR_TOKEN="${{ secrets.GPR_TOKEN }}"
-          -e TARGET_REPO="${{ inputs.target_repo }}"
-          -e SOURCE_BRANCH="${{ inputs.source_branch }}"
-          -e VERSION_NAME="${{ inputs.version_name }}"
-          -e VERSION_CODE="${{ inputs.version_code }}"
+          -e TARGET_REPO="${{ inputs.target_repo || 'axentless-sketch/OwnTV' }}"
+          -e SOURCE_BRANCH="${{ inputs.source_branch || 'main' }}"
+          -e VERSION_NAME="${{ inputs.version_name || '1.0.0' }}"
+          -e VERSION_CODE="${{ inputs.version_code || 100 }}"
           -e KEYSTORE_B64="${{ secrets.KEYSTORE_B64 }}"
           -e KEYSTORE_ALIAS="${{ secrets.KEYSTORE_ALIAS }}"
           -e KEYSTORE_PASS="${{ secrets.KEYSTORE_PASS }}"
