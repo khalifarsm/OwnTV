@@ -69,10 +69,10 @@ TEXT_EXTS = {".java", ".kt", ".xml", ".kts", ".pro", ".toml", ".properties", ".t
 # Skipped when scanning/rewriting (payloads: build output, tools, docs that are not shipped).
 # "baselineprofile" is a dev-only module (never built by :app:assembleRelease); freezing it keeps
 # its namespace (tv.own.owntv.baselineprofile) consistent with its source without shipping changes.
-IGNORED_DIRS = {".git", ".gradle", "build", "release", "rebrand", "dist", "schemas", ".idea", ".kotlin", "tools", "docs", "extras", "baselineprofile"}
+IGNORED_DIRS = {".git", ".github", ".gradle", "build", "release", "rebrand", "dist", "schemas", ".idea", ".kotlin", "tools", "docs", "extras", "baselineprofile"}
 IGNORED_FILES = {".gitignore"}
 # Skipped when copying the source snapshot (repo-local developer files).
-COPY_IGNORE_PATTERNS = (".git", ".gradle", "build", "release", "rebrand", "dist", ".idea", ".kotlin",
+COPY_IGNORE_PATTERNS = (".git", ".github", ".gradle", "build", "release", "rebrand", "dist", ".idea", ".kotlin",
                         "assemble.log", "compile.log", "docs", "extras")
 
 # OwnTV ships a single product; the two output files are the arm and emulator flavors.
@@ -94,8 +94,10 @@ OLD_PKG = "tv.own.owntv"
 # coordinate), and settings.gradle.kts gates the GPR repo with includeGroup("tv.own.owntv").
 PKG_SKIP_RELS = {"gradle/libs.versions.toml", "settings.gradle.kts"}
 # Only rename the app-owned root. Anything under the core artifact's namespaces
-# (`tv.own.owntv.core.*`, `tv.own.owntv.player.*`) must keep the old group/class tree.
-PKG_REPLACE_RE = re.compile(r"tv\.own\.owntv(?!\.(?:core|player))")
+# (`tv.own.owntv.core.*`, `tv.own.owntv.player.*`) and any `group:artifact` coordinate string
+# (`tv.own.owntv:core` / `:player-core`, also used by GPR auth + settings gates) must keep the
+# old group/class tree.
+PKG_REPLACE_RE = re.compile(r"tv\.own\.owntv(?!\.(?:core|player)|:)")
 
 RESERVED_PACKAGE_PREFIXES = ("java.", "javax.", "android.", "androidx.", "kotlin.", "com.google.", "tv.own")
 KEYWORDS = set(
