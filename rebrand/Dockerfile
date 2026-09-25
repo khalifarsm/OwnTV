@@ -73,6 +73,20 @@ if [ -d /tmp/warm ] && [ -n "$GO" ] && [ -n "$GU" ]; then
 fi
 EOF
 
+# Prefetch the Gradle wrapper distribution so runtime/CI builds never fetch the ~136MB zip from
+# services.gradle.org (flaky in-container; the wrapper's default 10s networkTimeout aborts). The
+# wrapper itself does the download so the cached layout matches what it expects. The daemon-JVM pin
+# is dropped here too, keeping this step on the image JVM.
+RUN set -eu; \
+ git clone --depth 1 https://github.com/khalifarsm/OwnTV.git /tmp/wravel 2>/dev/null || true; \
+ if [ -d /tmp/wravel ]; then \
+   rm -f /tmp/wravel/gradle/gradle-daemon-jvm.properties; \
+   sed -i '0,/networkTimeout=[0-9]*/s//networkTimeout=180000/' /tmp/wravel/gradle/wrapper/gradle-wrapper.properties; \
+   cd /tmp/wravel; \
+   for i in 1 2 3; do ./gradlew --version >/dev/null 2>&1 && break || sleep 5; done || true; \
+   cd /; rm -rf /tmp/wravel; \
+ fi
+
 COPY rebrand.py entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh \
  && mkdir -p /work

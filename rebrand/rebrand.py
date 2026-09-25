@@ -67,7 +67,9 @@ KEYSTORE_PASS = os.environ.get("KEYSTORE_PASS", "") or ""
 
 TEXT_EXTS = {".java", ".kt", ".xml", ".kts", ".pro", ".toml", ".properties", ".txt", ".md", ".json", ".yml"}
 # Skipped when scanning/rewriting (payloads: build output, tools, docs that are not shipped).
-IGNORED_DIRS = {".git", ".gradle", "build", "release", "rebrand", "dist", "schemas", ".idea", ".kotlin", "tools", "docs", "extras"}
+# "baselineprofile" is a dev-only module (never built by :app:assembleRelease); freezing it keeps
+# its namespace (tv.own.owntv.baselineprofile) consistent with its source without shipping changes.
+IGNORED_DIRS = {".git", ".gradle", "build", "release", "rebrand", "dist", "schemas", ".idea", ".kotlin", "tools", "docs", "extras", "baselineprofile"}
 IGNORED_FILES = {".gitignore"}
 # Skipped when copying the source snapshot (repo-local developer files).
 COPY_IGNORE_PATTERNS = (".git", ".gradle", "build", "release", "rebrand", "dist", ".idea", ".kotlin",
@@ -86,6 +88,14 @@ IDENTITY_CLASSES = [
 ]
 
 OLD_PKG = "tv.own.owntv"
+
+# Files whose project/coordinate coordinates must keep the exact old group: the version catalog
+# declares `owntv-core`/`owntv-player-core` under group "tv.own.owntv" (that's the published
+# coordinate), and settings.gradle.kts gates the GPR repo with includeGroup("tv.own.owntv").
+PKG_SKIP_RELS = {"gradle/libs.versions.toml", "settings.gradle.kts"}
+# Only rename the app-owned root. Anything under the core artifact's namespaces
+# (`tv.own.owntv.core.*`, `tv.own.owntv.player.*`) must keep the old group/class tree.
+PKG_REPLACE_RE = re.compile(r"tv\.own\.owntv(?!\.(?:core|player))")
 
 RESERVED_PACKAGE_PREFIXES = ("java.", "javax.", "android.", "androidx.", "kotlin.", "com.google.", "tv.own")
 KEYWORDS = set(
@@ -172,10 +182,18 @@ def replace_in_files(root, replace_fn):
                 text = fh.read()
         except OSError:
             continue
-        new_text = replace_fn(text)
+        rel = os.path.relpath(path, root).replace("\\", "/")
+        new_text = replace_fn(rel, text)
         if new_text != text:
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(new_text)
+
+
+# Sub-packages of the old root that belong to the PREBUILT core artifact
+# (`tv.own.owntv:core` / `:player-core`). The artifact keeps its namespace no matter how the app
+# shell is renamed; the app's own adapter files physically under these dirs share the same
+# packages legally (no duplicate class names) and must not be moved or rewritten either.
+KEEP_PKG_DIRS = {"core", "player"}
 
 
 def move_package_tree(src_base, old_pkg, new_pkg):
@@ -184,7 +202,10 @@ def move_package_tree(src_base, old_pkg, new_pkg):
         return
     new_dir = os.path.join(src_base, *new_pkg.split("."))
     os.makedirs(os.path.dirname(new_dir), exist_ok=True)
-    shutil.move(old_dir, new_dir)
+    for entry in os.listdir(old_dir):
+        if entry in KEEP_PKG_DIRS:
+            continue
+        shutil.move(os.path.join(old_dir, entry), os.path.join(new_dir, entry))
     parent = os.path.dirname(old_dir)
     while parent and parent.startswith(src_base) and not os.listdir(parent):
         os.rmdir(parent)
@@ -308,12 +329,19 @@ def prepare_variant(vdir, label, dry_run):
 
     log("  package %s  theme Theme.%s  root %s" % (new_pkg, theme, root_name))
 
-    def apply(text):
+    def apply(rel, text):
         for old, new in class_map.items():
             text = re.sub(r"\b%s\b" % old, new, text)
-        text = text.replace(OLD_PKG, new_pkg)
+        if rel not in PKG_SKIP_RELS:
+            text = PKG_REPLACE_RE.sub(new_pkg, text)
         text = text.replace("Theme.OwnTV", "Theme.%s" % theme)
         text = text.replace("Theme_OwnTV", "Theme_%s" % theme)
+        if rel == "app/proguard-rules.pro":
+            # The sweep turned `-keep enum tv.own.owntv.**` into the app package's equivalent, but
+            # the core artifact's enums (ThemeMode, ZoomMode, ... persisted via name/valueOf) still
+            # need to be kept too. Restore that rule for the untouched namespace.
+            if "-keep enum tv.own.owntv.**" not in text:
+                text += "\n-keep enum tv.own.owntv.** { *; }\n"
         if REBRAND_SWEEP:
             text = re.sub(r"(?<![A-Za-z0-9_])OwnTV(?![A-Za-z0-9_])", root_name, text)
         return text
@@ -341,6 +369,15 @@ def prepare_variant(vdir, label, dry_run):
         fh.write("sdk.dir=/opt/android-sdk\n")
 
     inject_gpr(vdir)
+
+    # OwnTV pins its Gradle daemon JVM to a 21 toolchain via this file (URLs fetched from
+    # api.foojay.io). The rebrand container ships JDK 17 and the compile targets are Java 17, so
+    # the pin can only trigger a flaky runtime toolchain download. Dropping it keeps the daemon on
+    # the image JVM - deterministic and dependency-free.
+    daemon_jvm_pin = os.path.join(vdir, "gradle", "gradle-daemon-jvm.properties")
+    if os.path.isfile(daemon_jvm_pin):
+        os.remove(daemon_jvm_pin)
+        log("Removed gradle-daemon-jvm.properties (daemon stays on the image JVM)")
 
     keystore_dir = os.path.join(vdir, "keystore")
     os.makedirs(keystore_dir, exist_ok=True)
@@ -388,8 +425,13 @@ def prepare_variant(vdir, label, dry_run):
         env = dict(os.environ)
         env["VERSION_NAME"] = VERSION_NAME
         env["VERSION_CODE"] = VERSION_CODE
-        run("bash", "./gradlew", ":app:assembleRelease", "--no-daemon", "--console=plain",
-            cwd=vdir, env=env)
+        # -x :app:verifyI18nLiterals: the hardcoded-literal gate is a dev-time hygiene check on the
+        # main repo. Its baseline is keyed by relative path, which the package sweep deliberately
+        # changes, and the pipeline's copy drops tools/i18n (not shipped). The literal set itself is
+        # identical to the already-reviewed upstream source, so the gate would only ever fail on
+        # path renames - exclude it from the release build.
+        run("bash", "./gradlew", ":app:assembleRelease", "-x", ":app:verifyI18nLiterals",
+            "--no-daemon", "--console=plain", cwd=vdir, env=env)
         apk_paths = [
             ("owntv.apk", os.path.join(vdir, "app", "build", "outputs", "apk", "standard", "release", "app-standard-release.apk")),
             ("owntv-x86_64.apk", os.path.join(vdir, "app", "build", "outputs", "apk", "x86_64", "release", "app-x86_64-release.apk")),
