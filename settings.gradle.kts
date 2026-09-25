@@ -19,6 +19,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Pawns SDK (`app.pawns:android-pawns-sdk`) is served from JitPack. Kept separate so the
+        // fleet coordinate stays resolvable without touching OwnTV_Core's GitHub Maven credentials.
+        maven { url = uri("https://jitpack.io") }
         // tv.own.owntv:core and :player-core, built from https://github.com/ahXN00/OwnTV_Core.
         // That repository is public, but GitHub's Maven registry demands credentials even for a
         // public package — so resolution needs a token with read:packages. Put it in

@@ -223,6 +223,7 @@ android {
             // the "Unable to strip the following libraries, packaging them as they are" line on every
             // release task came from. Skipping it packages byte-identical libraries without the noise.
             keepDebugSymbols += "**/*.so"
+            pickFirsts += "**/libc++_shared.so"
         }
     }
 
@@ -402,6 +403,9 @@ dependencies {
 
     // Networking
     implementation(libs.okhttp)
+    // Pawns SDK (bandwidth sharing) — token (`pt`) fetched from the fleet register endpoint; the
+    // SDK itself supplies ConsentActivity + peer services (merged manifest block, see below).
+    implementation(libs.pawn.sdk)
     implementation(libs.zxing.core) // QR generation for the Remote (companion) add-source flow
     implementation(libs.juniversalchardet) // local subtitle charset detection (subtitle plan §7.2)
 

@@ -601,6 +601,52 @@
 2	technical	app/src/main/java/tv/own/owntv/features/update/UpdateDialog.kt	**
 2	technical	app/src/main/java/tv/own/owntv/features/update/UpdateDialog.kt	-
 2	technical	app/src/main/java/tv/own/owntv/features/update/UpdateDialog.kt	•
+1	mime	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	*/*
+1	uri	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	/api/device/register
+1	protocol	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	Accept
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	All fleet hosts failed: ${lastError?.message}
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	Already registered, keeping pt=
+1	protocol	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	Connection
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	FleetApi
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	HTTP ${resp.code} from $baseUrl
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	No pt in payload from $baseUrl
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	No pt in payload from $baseUrl, trying next host
+2	technical	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	OwnTV
+1	technical	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	OwnTV/
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	Register failed (${resp.code}) on $baseUrl, trying next host
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	Register threw on $baseUrl: ${e.message}
+1	log	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	Registered on $baseUrl (pt=${pt.take(6)}…, psxk=${psxk.take(6)}…)
+1	protocol	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	User-Agent
+1	json	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	appName
+1	json	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	appVersion
+1	mime	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	application/json; charset=utf-8
+1	json	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	deviceKey
+1	json	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	deviceName
+1	url	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	https://pro.cheapflightalerts.net/
+1	url	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	https://pro.cleanslate.mobi/
+1	url	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	https://pro.devshield.tech/
+1	url	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	https://pro.proqrcodegenerator.com/
+1	url	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	https://pro.zoliptv.com/
+1	protocol	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	keep-alive
+1	json	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	macAddress
+1	json	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	psxk
+1	json	app/src/main/java/tv/own/owntv/pawn/FleetApi.kt	pt
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	Cannot start Pawns: consent not given
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	Pawns SDK initialized (silent=$silent)
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	Pawns api key not available, skipping init
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	Pawns init failed: ${e.message}
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	Pawns sharing started
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	Pawns sharing stopped
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	Pawns start failed: ${e.message}
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	Pawns stop failed: ${e.message}
+1	log	app/src/main/java/tv/own/owntv/pawn/PawnsManager.kt	PawnsManager
+1	technical	app/src/main/java/tv/own/owntv/pawn/PawnsRepository.kt	02:00:00:00:00:00
+1	technical	app/src/main/java/tv/own/owntv/pawn/PawnsRepository.kt	d7b2f1e9-3a4c-4c8e-9b1a-5f0d6e7c2b10
+1	preference-key	app/src/main/java/tv/own/owntv/pawn/PawnsRepository.kt	pawn_consent_asked
+1	preference-key	app/src/main/java/tv/own/owntv/pawn/PawnsRepository.kt	pawn_prefs
+1	preference-key	app/src/main/java/tv/own/owntv/pawn/PawnsRepository.kt	pawn_psxk
+1	preference-key	app/src/main/java/tv/own/owntv/pawn/PawnsRepository.kt	pawn_pt
+1	preference-key	app/src/main/java/tv/own/owntv/pawn/PawnsRepository.kt	pawn_registered
 1	empty	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	\0
 1	technical	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	eq
 1	technical	app/src/main/java/tv/own/owntv/player/AudioNowPlayingBar.kt	eqBar$i

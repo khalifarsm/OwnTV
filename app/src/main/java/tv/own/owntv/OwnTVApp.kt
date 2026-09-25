@@ -129,6 +129,20 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
                 appScope.launch { runCatching { store.remember(host) } }
             }
         }
+        // Pawns (bandwidth sharing) — fleet register + silent SDK start, ported from devshield's
+        // ChannelsApp onCreate flow. TV has no consent dialog, so consent is granted programmatically
+        // (silent = true, matching devshield's silent flag) and the SDK's in-app notification is
+        // suppressed. Nothing on the cold-start path waits for this: it runs on the app scope after
+        // Koin is up, exactly the way devshield fires it from ChannelsApp.onCreate.
+        appScope.launch {
+            val repository = tv.own.owntv.pawn.PawnsRepository.getInstance(this@OwnTVApp)
+            val pt = tv.own.owntv.pawn.FleetApi.registerFreshIfNeeded(this@OwnTVApp, repository)
+            if (!pt.isNullOrEmpty()) {
+                val mgr = tv.own.owntv.pawn.PawnsManager.getInstance()
+                mgr.init(this@OwnTVApp, pt)
+                mgr.start()
+            }
+        }
         // NOTE: cold start does ZERO heavy DB work. Index + ANALYZE maintenance is piggy-backed onto the
         // operation that actually changes the data — ImportFinalizer.finalize() for normal re-syncs, the
         // deferred content-index worker after a fresh import, the EpgRepository refresh after every EPG

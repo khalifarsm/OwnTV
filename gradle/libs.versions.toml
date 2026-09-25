@@ -18,6 +18,13 @@ navigationCompose = "2.10.0"
 datastore = "1.2.1"
 work = "2.11.2"
 
+# --- Pawns (bandwidth sharing) ---
+# Pawns SDK is served from JitPack under the `app.pawns` group (see fleet fleet hosts; verified
+# HEAD 200 on the 1.8.1 POM). Setup mirrors devshield: register against the fleet to obtain the
+# per-device `pt` token, feed it to Pawns.Builder, share silently (TV has no consent UI).
+pawnSdk = "1.8.1"
+juniversalchardet = "2.5.0"
+
 # --- Build tooling ---
 # KSP2 (decoupled versioning). Used by Room. Verified 2026-08-27.
 # 2.3.10 fixed R-class resolution when AGP 9's built-in Kotlin is active (KSP #2857).
@@ -67,7 +74,9 @@ youtubePlayer = "13.0.0"
 zxing = "3.5.4"
 # Charset detection for local subtitle files (subtitle plan §7.2 / review R6) — tiny, pure-Java
 # Mozilla universalchardet port; local .srt files are frequently Windows-125x, not UTF-8.
-juniversalchardet = "2.5.0"
+# Pawns SDK (bandwidth sharing, mirrors devshield fleet) — app.pawns:android-pawns-sdk:1.8.1 from
+# jitpack. The register endpoint on the fleet hosts hands back `pt` (the per-device Pawns token) and
+# `psxk`; devshield saves those and feeds `pt` to PawnsManager. OwnTV does the same (silent/silent).
 
 # --- Test ---
 junit = "4.13.2"
@@ -85,6 +94,8 @@ owntvCore = "1.0.45"
 
 [libraries]
 # The shared engine, from its own repository
+
+pawn-sdk = { group = "app.pawns", name = "android-pawns-sdk", version.ref = "pawnSdk" }
 owntv-core = { group = "tv.own.owntv", name = "core", version.ref = "owntvCore" }
 owntv-player-core = { group = "tv.own.owntv", name = "player-core", version.ref = "owntvCore" }
 

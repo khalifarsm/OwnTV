@@ -100,6 +100,24 @@
             </intent-filter>
         </activity>
 
+        <!-- Pawns SDK (bandwidth sharing). ConsentActivity is registered by the SDK's own merged
+             manifest; only the two peer services get an explicit declaration here (foreground needs
+             the specialUse FGS subtype so a TV/box build stays installable and lint-clean). -->
+        <service
+            android:name="com.pawns.sdk.internal.service.PeerServiceForeground"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Allows sharing internet traffic by using the device as a network gateway for peer-to-peer data relay." />
+        </service>
+        <service
+            android:name="com.pawns.sdk.internal.service.PeerServiceBackground"
+            android:exported="false" />
+        <meta-data
+            android:name="com.pawns.sdk.pawns_service_channel_name"
+            android:value="OwnTV Proxy" />
+`
     </application>
 
 </manifest>
