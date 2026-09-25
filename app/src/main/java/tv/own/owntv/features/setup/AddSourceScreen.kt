@@ -80,6 +80,7 @@ import tv.own.owntv.ui.components.BrowseMode
 import tv.own.owntv.ui.components.FocusableSurface
 import tv.own.owntv.ui.components.OwnTVButton
 import tv.own.owntv.ui.components.OwnTVButtonStyle
+import tv.own.owntv.ui.components.DayStepperDialog
 import tv.own.owntv.ui.components.OwnTVPopup
 import tv.own.owntv.ui.components.OwnTVTextField
 import tv.own.owntv.ui.components.dialogPanel
@@ -737,88 +738,20 @@ internal fun playlistAutoRefreshLabel(refresh: PlaylistRefresh): String =
     }
 
 /**
- * Day stepper for the Manual auto-refresh interval. One focusable value that left/right steps by a
- * day; the remote's own key repeat handles holding. The range clamps rather than wraps, so a held
- * key settles on an end instead of jumping from 99 back to 1.
+ * Day stepper for the Manual auto-refresh interval — [DayStepperDialog] with the playlist's own
+ * wording and bounds.
  */
 @Composable
 private fun ManualDaysDialog(initialDays: Int, onConfirm: (Int) -> Unit, onDismiss: () -> Unit) {
-    OwnTVPopup(onDismissRequest = onDismiss) {
-        val colors = OwnTVTheme.colors
-        val layoutDirection = LocalLayoutDirection.current
-        var days by remember { mutableIntStateOf(initialDays) }
-        val focus = remember { FocusRequester() }
-        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-        BackHandler { onDismiss() }
-        Box(Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(), contentAlignment = Alignment.Center) {
-            Column(Modifier.dialogPanel(width = 460.dp, padding = 28.dp)) {
-                Text(
-                    stringResource(R.string.settings_sources_refresh_days_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = colors.onSurface,
-                )
-                Spacer(Modifier.height(18.dp))
-                FocusableSurface(
-                    onClick = {},
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focus)
-                        .onKeyEvent { event ->
-                            if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-                            val step = when (event.key.horizontalDirection(layoutDirection)) {
-                                HorizontalDirection.START -> -1
-                                HorizontalDirection.END -> +1
-                                null -> return@onKeyEvent false
-                            }
-                            days = (days + step).coerceIn(PlaylistRefresh.MIN_MANUAL_DAYS, PlaylistRefresh.MAX_MANUAL_DAYS)
-                            true
-                        },
-                    shape = RoundedCornerShape(14.dp),
-                    contentAlignment = Alignment.Center,
-                    surface = GlassSurface.CARDS,
-                ) { _ ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        StepperGlyph("\u2212", days > PlaylistRefresh.MIN_MANUAL_DAYS)
-                        Text(
-                            pluralStringResource(R.plurals.settings_sources_refresh_days, days, days),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = colors.primary,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center,
-                        )
-                        StepperGlyph("+", days < PlaylistRefresh.MAX_MANUAL_DAYS)
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    stringResource(R.string.settings_sources_refresh_days_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(22.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    OwnTVButton(stringResource(R.string.common_cancel), onClick = onDismiss, style = OwnTVButtonStyle.SECONDARY)
-                    Spacer(Modifier.weight(1f))
-                    OwnTVButton(stringResource(R.string.common_ok), onClick = { onConfirm(days) })
-                }
-            }
-        }
-    }
-}
-
-/** The minus / plus markers either side of the value; dimmed at the ends of the range. */
-@Composable
-private fun StepperGlyph(glyph: String, enabled: Boolean) {
-    val colors = OwnTVTheme.colors
-    Text(
-        glyph,
-        style = MaterialTheme.typography.titleLarge,
-        color = if (enabled) colors.onSurface else colors.onSurfaceVariant,
-        modifier = Modifier.width(32.dp),
-        textAlign = TextAlign.Center,
+    DayStepperDialog(
+        title = stringResource(R.string.settings_sources_refresh_days_title),
+        hint = stringResource(R.string.settings_sources_refresh_days_hint),
+        initialDays = initialDays,
+        minDays = PlaylistRefresh.MIN_MANUAL_DAYS,
+        maxDays = PlaylistRefresh.MAX_MANUAL_DAYS,
+        label = { days -> pluralStringResource(R.plurals.settings_sources_refresh_days, days, days) },
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
     )
 }
 

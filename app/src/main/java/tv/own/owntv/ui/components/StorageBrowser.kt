@@ -38,8 +38,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -123,8 +121,10 @@ private fun StorageBrowserContent(
         runCatching { firstFocus.requestFocus() }
     }
 
-    Box(Modifier.fillMaxSize().modalScrim().focusGroup(), contentAlignment = Alignment.Center) {
-        Column(Modifier.width(270.dp).clip(RoundedCornerShape(16.dp)).background(colors.surfaceContainerHigh).padding(14.dp)) {
+    Box(Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(), contentAlignment = Alignment.Center) {
+        // scroll = false: the listing below is a height-capped LazyColumn, which cannot nest inside
+        // dialogPanel's own vertical scroll.
+        Column(Modifier.dialogPanel(width = 270.dp, corner = 16.dp, padding = 14.dp, scroll = false)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
             Spacer(Modifier.height(4.dp))
             Text(current?.absolutePath ?: stringResource(R.string.setup_pick_location), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

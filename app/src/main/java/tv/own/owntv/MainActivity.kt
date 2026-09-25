@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
+import androidx.room.useWriterConnection
 import android.view.WindowManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -161,8 +162,14 @@ class MainActivity : ComponentActivity() {
     private fun probeDatabase(): String? {
         var error: String? = null
         val worker = Thread {
-            runCatching { get<tv.own.owntv.core.database.OwnTVDatabase>().openHelper.readableDatabase }
-                .onFailure { error = it.message ?: it.javaClass.simpleName }
+            // Core configures a SQLiteDriver (its plan Phase B), and `openHelper` throws outright
+            // once one is set. Opening a connection is what this probe was always really doing —
+            // forcing Room to run the migration chain now rather than inside the first query.
+            runCatching {
+                kotlinx.coroutines.runBlocking {
+                    get<tv.own.owntv.core.database.OwnTVDatabase>().useWriterConnection { }
+                }
+            }.onFailure { error = it.message ?: it.javaClass.simpleName }
         }
         worker.start()
         worker.join(DB_PROBE_TIMEOUT_MS)

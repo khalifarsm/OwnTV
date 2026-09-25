@@ -64,7 +64,14 @@ Each engine is chosen automatically by content type, with fallback between them.
   `#KODIPROP` licence properties, for live channels, films and episodes. The device's own CDM does
   the work, so there is nothing to configure and no licence to buy; the device's security level
   decides whether HD is served. Such an item is pinned to ExoPlayer, outranks every other preference,
-  and never leaves for an external player.
+  and never leaves for an external player. It also **cannot be recorded** — the CDM decrypts only
+  into a secure decoder for immediate display, so a recording is refused before it starts rather than
+  left as a file that will not play.
+- **Container is decided from evidence, not from the file extension** — the declared
+  `manifest_type`, then what the response actually turns out to be, then what the same provider has
+  already been caught serving. This is what lets a DASH channel published at an extensionless address
+  play at all, and it is the only route available to Stalker portals and Xtream panels, whose stream
+  addresses can carry no declaration.
 
 ### 2.2 Rendering
 
@@ -191,6 +198,18 @@ duotone navigation icons. **Panel Width Adjustment** sets each section's three w
 preview allowed to be 0% to hide it; the Guide's two columns split independently. Theme is
 Dark / Light / System.
 
+Movies and Series additionally offer a second layout, chosen in Settings → Layout → **Movies &
+Series layout** and shared by both sections. **Separate panels** is the three-region container above
+and remains the default. **Cinematic** drops the container entirely: the focused title's TMDB
+backdrop is drawn full-bleed behind the whole screen under two fixed wash gradients, the category
+panel floats on it as its own translucent plate, and a **read-only** detail block — title-logo
+artwork with the name beneath it, rating, quality badges, genres, plot and cast photos — sits above a
+wide poster grid. It is deliberately grid-only and deliberately has no focusable children, so focus
+never leaves the grid and every action stays where it already is: OK plays, long-press opens the
+context menu, resume state reads as a badge and a poster sliver. Panel Width Adjustment resolves the
+same section into two columns there, with the detail block's height held as its own separate
+setting rather than as one of the three width shares. Live TV is never Cinematic.
+
 ### 3.6 Categories, search and memory
 
 Folder rails with Favorites and History per section; full category names, never abbreviated; a
@@ -310,10 +329,14 @@ path in each result.
 
 A fresh installation opens with a **language selector before Get Started**. English plus 25 packaged
 translations; further requested languages stay catalogue-only until they reach the reviewed
-readiness threshold. The first run is five pages: language → text size → disclaimer → profile →
-add a playlist. The profile page offers three routes, not two: create one, restore a backup file, or
-**copy everything from another OwnTV device** over the local network — so replacing a box does not
-mean finishing setup first and then finding Local sync in the menus.
+readiness threshold. The first run is welcome (which carries the language selector) → text size →
+disclaimer → **Set up OwnTV** → profile → **add a playlist** → how to enter it → the import, closing
+with an offer to download the guide. **Set up OwnTV** offers three routes, not two: create a profile,
+restore a backup file, or **copy everything from another OwnTV device** over the local network — so
+replacing a box does not mean finishing setup first and then finding Local sync in the menus. The
+"how to enter it" page is the one that keeps an Xtream password off the D-pad: **Remote** hands the
+form to a phone over Wi-Fi, **Manual** types it on the television. It is the same page Settings →
+Manage sources reaches later, so the choice is never a first-run-only opportunity.
 
 App language is independent of profiles and of the separate TMDB metadata language, and survives
 restart and backup/restore. Locale-aware plurals, dates, times, numbers, RTL navigation, font

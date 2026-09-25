@@ -1,7 +1,6 @@
 package tv.own.owntv.features.home
 
 import tv.own.owntv.core.epg.displayLogoUrl
-import coil3.compose.AsyncImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
@@ -40,7 +39,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -484,23 +482,18 @@ private fun ChannelLogoBadge(
     focused: Boolean,
 ) {
     val colors = OwnTVTheme.colors
-    Box(
+    // The focused tint stays on the tile itself — it is a focus cue, not the logo's backing — while
+    // the neutral dark fill is left to ChannelLogoTile, which drops it behind a transparent logo.
+    tv.own.owntv.ui.components.ChannelLogoTile(
+        logoUrl = channel.displayLogoUrl,
         modifier = Modifier
             .size(46.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(if (focused) colors.primaryContainer else colors.surfaceContainerLowest),
-        contentAlignment = Alignment.Center,
+            .then(if (focused) Modifier.background(colors.primaryContainer) else Modifier),
+        imageModifier = Modifier.size(40.dp),
+        fill = if (focused) Color.Transparent else colors.surfaceContainerLowest,
     ) {
-        if (!channel.displayLogoUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = channel.displayLogoUrl,
-                contentDescription = null,
-                modifier = Modifier.size(40.dp),
-                contentScale = ContentScale.Fit,
-            )
-        } else {
-            ChannelTextBadge(channel = channel, focused = focused)
-        }
+        ChannelTextBadge(channel = channel, focused = focused)
     }
 }
 
@@ -509,27 +502,17 @@ private fun ChannelLogo(
     channel: ChannelEntity,
     size: Int,
 ) {
-    Box(
+    tv.own.owntv.ui.components.ChannelLogoTile(
+        logoUrl = channel.displayLogoUrl,
         modifier = Modifier
             .size(size.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(OwnTVTheme.colors.surfaceContainerLowest),
-        contentAlignment = Alignment.Center,
+            .clip(RoundedCornerShape(10.dp)),
     ) {
-        if (!channel.displayLogoUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = channel.displayLogoUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-            )
-        } else {
-            OwnTVIcon(
-                OwnTVIcon.LIVE_TV,
-                tint = OwnTVTheme.colors.onSurfaceVariant,
-                modifier = Modifier.size((size / 2).dp),
-            )
-        }
+        OwnTVIcon(
+            OwnTVIcon.LIVE_TV,
+            tint = OwnTVTheme.colors.onSurfaceVariant,
+            modifier = Modifier.size((size / 2).dp),
+        )
     }
 }
 

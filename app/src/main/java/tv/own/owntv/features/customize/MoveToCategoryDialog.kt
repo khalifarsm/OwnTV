@@ -39,7 +39,6 @@ import tv.own.owntv.ui.components.modalScrim
 import tv.own.owntv.ui.components.trapAllFocusExit
 import tv.own.owntv.core.theme.GlassSurface
 import tv.own.owntv.ui.theme.OwnTVTheme
-import tv.own.owntv.ui.theme.PopupFontTheme
 
 /**
  * One destination row in the "Move to…" dialog: a user-created custom category (issue #87) plus how
@@ -69,7 +68,7 @@ fun MoveToCategoryDialog(
     val newCatFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { newCatFocus.requestFocus() } }
     BackHandler { onDismiss() }
-    PopupFontTheme {
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
             contentAlignment = Alignment.Center,

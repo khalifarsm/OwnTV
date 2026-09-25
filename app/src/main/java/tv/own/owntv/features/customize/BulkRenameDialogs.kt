@@ -111,7 +111,7 @@ private fun BulkRenameChoicePopup(session: BulkRenameSession) {
     val addFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { addFocus.requestFocus() } }
     BackHandler { session.close() }
-    PopupFontTheme {
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = { session.close() }) {
     Box(
         modifier = Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
         contentAlignment = Alignment.Center,
@@ -206,7 +206,7 @@ private fun BulkRuleBuilderDialog(session: BulkRenameSession) {
         session.submitRules(out, RenameRules.Options(trimLeftovers = trim, ignoreCase = ignoreCase))
     }
 
-    PopupFontTheme {
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = { session.backToChoice() }) {
     Box(
         modifier = Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
         contentAlignment = Alignment.Center,
@@ -396,7 +396,7 @@ private fun BulkReviewDialog(session: BulkRenameSession) {
         // Dense TV review: one-third smaller than the previous 0.75 scale.
         PopupFontTheme(fontScale = 0.50f) {
     Box(
-        Modifier.fillMaxSize().modalScrim(),
+        Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
         contentAlignment = Alignment.Center,
     ) {
         // scroll = false: this column holds a LazyColumn, which manages its own scrolling.
@@ -542,7 +542,7 @@ private fun BulkRestoreConfirmDialog(session: BulkRenameSession) {
     val restoreFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { restoreFocus.requestFocus() } }
     BackHandler { session.backToChoice() }
-    PopupFontTheme {
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = { session.backToChoice() }) {
     Box(
         modifier = Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
         contentAlignment = Alignment.Center,
@@ -573,7 +573,7 @@ private fun BulkRefusedDialog(session: BulkRenameSession) {
     val okFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { okFocus.requestFocus() } }
     BackHandler { session.dismissRefused() }
-    PopupFontTheme {
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = { session.dismissRefused() }) {
     Box(
         modifier = Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
         contentAlignment = Alignment.Center,

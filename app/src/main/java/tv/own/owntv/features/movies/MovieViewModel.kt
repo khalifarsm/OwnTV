@@ -76,6 +76,8 @@ import tv.own.owntv.core.live.serialize
 
 class MovieViewModel(
     private val movieDao: MovieDao,
+    /** Lets the browse screen tell core's drain which category to fill first (core's N1c). */
+    private val catalogPriority: tv.own.owntv.core.sync.CatalogPriority,
     private val categoryDao: CategoryDao,
     private val favoriteDao: FavoriteDao,
     private val historyDao: HistoryDao,
@@ -494,6 +496,14 @@ class MovieViewModel(
     fun select(key: LiveKey) {
         if (lockedKey != null) return
         _selected.value = key
+        // Core's lazy-catalogue drain fills categories in the provider's order; tell it the user is
+        // here so this one is served next (core's N1c). A no-op for every playlist that was not
+        // lazily added, and for a category that is already complete.
+        if (key is LiveKey.Folder) {
+            viewModelScope.launch { runCatching { catalogPriority.requestFirst(key.id) } }
+        } else {
+            catalogPriority.clear()
+        }
     }
     fun setSearchQuery(query: String) { _search.value = query }
     fun onMovieFocused(movie: MovieEntity) { _selectedMovie.value = movie }
@@ -637,6 +647,7 @@ class MovieViewModel(
                 userAgent = sourceUa,
                 httpHeaders = movie.httpHeaders,
                 drmConfig = movie.drmConfig,
+                manifestType = movie.manifestType,
                 // P6 — engine pins key on this, not on playUrl (a Stalker playUrl is minted per play).
                 contentKey = pinKey,
                 // F12 — a Stalker create_link URL dies before a long film ends; give the player a way to

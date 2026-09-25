@@ -417,8 +417,16 @@ fun Modifier.glass(
                 textLuma = colors.onSurface.luminance(),
             )
         } else 0f
-        return (maxOf(config.alpha, floor) + roleAdjustment + interactionAdjustment)
-            .coerceIn(0.22f, 1f)
+        val base = maxOf(config.alpha, floor)
+        val adjust = roleAdjustment + interactionAdjustment
+        // A fixed additive bump saturates once the user's own opacity is high. At Surface
+        // transparency 85% the dialogs' +0.12 landed on 0.97 and popups stopped reading as glass at
+        // all, while the panels beside them at 0.85 still did. Spend a densifying adjustment out of
+        // the headroom that is actually left, so it keeps its relative weight at every setting and
+        // can never close the gap on its own. Thinning adjustments (cards, focus) are unchanged —
+        // they move away from opaque and have no saturation problem.
+        val adjusted = if (adjust > 0f) base + adjust * (1f - base) else base + adjust
+        return adjusted.coerceIn(0.22f, 1f)
     }
     fun darkLensMix(sampledLuma: Float?): Float = when {
         !colors.isDark -> 1f

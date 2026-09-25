@@ -35,6 +35,7 @@ import tv.own.owntv.core.sync.work.CatalogSyncScheduler
 import tv.own.owntv.core.sync.work.EpgSyncScheduler
 import tv.own.owntv.core.database.dao.EpgDao
 import tv.own.owntv.core.settings.EpgAutoRefresh
+import tv.own.owntv.core.settings.EpgRefresh
 import tv.own.owntv.core.settings.PlaylistAutoRefresh
 import tv.own.owntv.core.settings.PlaylistRefresh
 import tv.own.owntv.core.settings.SettingsRepository
@@ -152,7 +153,7 @@ class ShellViewModel(
             if (epgModes.isNotEmpty()) {
                 val epgSources = epgSourceStore.getAll()
                 epgSources.forEach { src ->
-                    val mode = epgModes[src.id] ?: EpgAutoRefresh.OFF
+                    val mode = epgModes[src.id] ?: EpgRefresh.OFF
                     if (shouldRefreshEpg(mode, src.lastSyncAt, nowMs, includeStartup)) {
                         val base = epgDao.countForSources(listOf(src.id))
                         Log.d(TAG, "checkAutoRefresh epg sourceId=${src.id} mode=$mode — enqueuing")
@@ -223,14 +224,16 @@ class ShellViewModel(
 
     /** EPG equivalent of [shouldRefresh]. */
     private fun shouldRefreshEpg(
-        mode: EpgAutoRefresh,
+        refresh: EpgRefresh,
         lastSyncAt: Long?,
         now: Long,
         includeStartup: Boolean,
-    ): Boolean = when (mode) {
+    ): Boolean = when (refresh.mode) {
         EpgAutoRefresh.OFF -> false
         EpgAutoRefresh.STARTUP -> includeStartup
-        else -> (now - (lastSyncAt ?: 0L)) >= (mode.thresholdMs ?: Long.MAX_VALUE)
+        // MANUAL's threshold is its day count; every other mode carries its own. Identical shape to
+        // [shouldRefresh], which is the point of the parity.
+        else -> (now - (lastSyncAt ?: 0L)) >= (refresh.thresholdMs ?: Long.MAX_VALUE)
     }
 
     val themeMode: StateFlow<ThemeMode> = settings.themeMode

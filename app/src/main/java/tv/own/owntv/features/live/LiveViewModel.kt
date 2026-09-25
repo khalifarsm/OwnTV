@@ -375,6 +375,9 @@ class LiveViewModel(
      *  single place that knows a customization changed. */
     private val epgReader = LiveEpgReader(epgDao, epgSourceStore, sourceDao, xtreamClient, streamUrlResolver)
 
+    /** The same candidate set the Guide's picker uses — filtered by no source. */
+    private val guideCandidates = tv.own.owntv.core.epg.GuideCandidates(epgDao)
+
     /** Catch-up and live-rewind archive URL construction — see [LiveArchiveUrls]. */
     private val archiveUrls = LiveArchiveUrls(sourceDao, xtreamClient, streamUrlResolver, settings)
 
@@ -464,7 +467,7 @@ class LiveViewModel(
     /** Global guide shift (minutes); a per-channel override in [custom] wins over it. Changing it
      *  drops the now/next cache so the details pane reflects the new offset straight away. */
     private val epgOffset: StateFlow<Int> = settings.epgOffsetMinutes
-        .onEach { epgReader.clearCache(); epgRefresh.value++ }
+        .onEach { epgReader.clearCache(); epgRefresh.value++; clearNowPlaying() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     /** The user's custom combined categories with live member counts — the "Move to…" dialog's list. */
@@ -696,7 +699,7 @@ class LiveViewModel(
     }
 
     /** The current manual EPG id for a channel, or null if auto-matched. */
-    fun currentEpgMatch(channel: ChannelEntity): String? = custom.value.epgMatches[CustomizeKeys.channel(channel)]
+    fun currentEpgMatch(channel: ChannelEntity): String? = custom.value.epgMatchResolver.epgIdFor(channel)
 
     /** Shift this channel's guide by [minutes] (null → follow the global EPG offset). */
     fun setEpgShift(channel: ChannelEntity, minutes: Int?) {
@@ -720,9 +723,9 @@ class LiveViewModel(
 
     /** Distinct EPG channels for the "Match EPG" picker (across the profile's playlists + EPG feeds),
      *  ranked so guide channels resembling [channelName] come first instead of a plain A-Z list. */
-    suspend fun availableEpgChannels(channelName: String, query: String): List<tv.own.owntv.core.database.entity.EpgChannelEntity> {
+    suspend fun availableEpgChannels(channelName: String, query: String): List<tv.own.owntv.core.epg.GuideCandidate> {
         if (currentProfileId() == null) return emptyList()
-        return epgReader.availableEpgChannels(channelName, query, ctx.value.sourceIds)
+        return guideCandidates.forPicker(channelName, query)
     }
 
     val count: StateFlow<Int> = combine(_selected, ctx, hiddenCategoryIds) { key, c, hidden -> Triple(key, c, hidden) }
@@ -910,6 +913,8 @@ class LiveViewModel(
             liveBufferOverride = liveBufferFor(channel.sourceId),
             httpHeaders = channel.httpHeaders,
             drmConfig = channel.drmConfig,
+            manifestType = channel.manifestType,
+            directSource = channel.directSource,
         )
     }
 
@@ -961,6 +966,7 @@ class LiveViewModel(
                     prerollSecsOverride = prerollFor(channel.sourceId),
                     liveBufferOverride = liveBufferFor(channel.sourceId),
                     httpHeaders = channel.httpHeaders, drmConfig = channel.drmConfig,
+                    manifestType = channel.manifestType, directSource = channel.directSource,
                 )
             }
             return
@@ -971,6 +977,7 @@ class LiveViewModel(
             prerollSecsOverride = prerollFor(channel.sourceId),
             liveBufferOverride = liveBufferFor(channel.sourceId),
             httpHeaders = channel.httpHeaders, drmConfig = channel.drmConfig,
+            manifestType = channel.manifestType, directSource = channel.directSource,
         )
     }
 
@@ -1004,6 +1011,8 @@ class LiveViewModel(
                 liveBufferOverride = liveBufferFor(channel.sourceId),
                 httpHeaders = channel.httpHeaders,
                 drmConfig = channel.drmConfig,
+                manifestType = channel.manifestType,
+                directSource = channel.directSource,
             )
         }
     }
@@ -1598,6 +1607,8 @@ class LiveViewModel(
                 liveBufferOverride = liveBufferFor(channel.sourceId),
                 httpHeaders = channel.httpHeaders,
                 drmConfig = channel.drmConfig,
+                manifestType = channel.manifestType,
+                directSource = channel.directSource,
             )
         }
         watchExoOutcome(channel)
@@ -1629,6 +1640,8 @@ class LiveViewModel(
                 liveBufferOverride = liveBufferFor(channel.sourceId),
                 httpHeaders = channel.httpHeaders,
                 drmConfig = channel.drmConfig,
+                manifestType = channel.manifestType,
+                directSource = channel.directSource,
             )
             watchExoOutcome(channel)
         }
@@ -2285,6 +2298,85 @@ class LiveViewModel(
     suspend fun nowPlayingFor(channels: List<ChannelEntity>): Map<Long, String> =
         epgReader.nowPlayingFor(channels, custom.value, epgOffset.value)
 
+    /**
+     * Current programme title per channel id, shared by the Live list and the in-player overlays.
+     *
+     * Bounded and least-recently-used: any screen may add to it, and none of them prunes on another's
+     * behalf. An earlier version had each caller drop everything outside its own list, which made the
+     * Live list and the channel-list overlay evict each other's work every time one opened.
+     */
+    private val nowPlayingCache = object : LinkedHashMap<Long, String>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, String>?) = size > MAX_NOW_PLAYING
+    }
+
+    private val _nowPlaying = MutableStateFlow<Map<Long, String>>(emptyMap())
+
+    /**
+     * Channel id → the programme airing now.
+     *
+     * Channels that were asked about and have no guide are held internally as a blank, so they are
+     * not asked again on every append; that sentinel is filtered out here, so such a row simply has
+     * no entry and draws no second line.
+     */
+    val nowPlaying: StateFlow<Map<Long, String>> = _nowPlaying
+        .map { titles -> titles.filterValues { it.isNotBlank() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    private var nowPlayingJob: kotlinx.coroutines.Job? = null
+
+    private fun publishNowPlaying(resolved: Map<Long, String>) {
+        synchronized(nowPlayingCache) {
+            nowPlayingCache.putAll(resolved)
+            _nowPlaying.value = HashMap(nowPlayingCache)
+        }
+    }
+
+    private fun cachedNowPlaying(): Map<Long, String> = synchronized(nowPlayingCache) { HashMap(nowPlayingCache) }
+
+    /** Forget every resolved title — the guide data or the offset moved underneath them. */
+    private fun clearNowPlaying() {
+        synchronized(nowPlayingCache) { nowPlayingCache.clear() }
+        _nowPlaying.value = emptyMap()
+    }
+
+    /**
+     * Fill in "now playing" for [loaded], querying **only what is missing**.
+     *
+     * The Live screen used to key a producer on the whole paging snapshot, so every appended page
+     * re-asked for every channel already on screen, and a 60-second timer then repeated that for the
+     * full set. Scrolled deep into a large category that is a dozen chunked queries a minute to learn
+     * almost nothing new. The phone has always done it this way; this is the television adopting it.
+     */
+    fun ensureNowPlaying(loaded: List<ChannelEntity>) {
+        if (loaded.isEmpty()) return
+        val known = cachedNowPlaying()
+        val missing = loaded.filter { it.id !in known }
+        if (missing.isEmpty()) return
+        nowPlayingJob?.cancel()
+        nowPlayingJob = viewModelScope.launch {
+            val found = runCatching { nowPlayingFor(missing) }.getOrDefault(emptyMap())
+            // Remember the ones with no guide too, as a blank — otherwise they are re-queried on
+            // every single append, which is most of the cost this removes.
+            publishNowPlaying(found + missing.filter { it.id !in found }.associate { it.id to "" })
+        }
+    }
+
+    /**
+     * Re-read [loaded] because the programmes have turned over.
+     *
+     * Called on the **minute boundary** by the screen, not 60 seconds after it opened: a programme
+     * changes on the minute, so a timer started from mount shows rows changing up to 59 seconds late
+     * and at different instants from one another.
+     */
+    fun refreshNowPlaying(loaded: List<ChannelEntity>) {
+        if (loaded.isEmpty()) return
+        nowPlayingJob?.cancel()
+        nowPlayingJob = viewModelScope.launch {
+            val found = runCatching { nowPlayingFor(loaded) }.getOrDefault(emptyMap())
+            publishNowPlaying(found + loaded.filter { it.id !in found }.associate { it.id to "" })
+        }
+    }
+
     private suspend fun currentProfileId(): Long? {
         val preferred = settings.activeProfileId.first()
         return if (preferred >= 0) profileDao.resolveExistingProfileId(preferred) else null
@@ -2436,6 +2528,10 @@ class LiveViewModel(
          *  (10s) plus a retry and a format alternate underneath this one, and cutting in before that
          *  finishes would throw away attempts that often succeed. */
         const val MPV_OPEN_TIMEOUT_MS = 35_000L
+
+        /** Resolved "now playing" titles kept at once. Big enough for a large category plus the
+         *  overlays that share the map, small enough that it cannot grow with the catalogue. */
+        const val MAX_NOW_PLAYING = 2_000
 
     }
 }

@@ -687,7 +687,7 @@ private fun EpgMatchReviewDialog(
     tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDone) {
     tv.own.owntv.ui.theme.PopupFontTheme(fontScale = 0.75f) {
     Box(
-        Modifier.fillMaxSize().modalScrim(),
+        Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
         contentAlignment = Alignment.Center,
     ) {
         Column(Modifier.dialogPanel(width = 576.dp, corner = 18.dp, padding = 18.dp)) {
@@ -771,6 +771,7 @@ private fun EpgMatchChooserDialog(
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { firstFocus.requestFocus() } }
 
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
     Box(
         Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup()
             .longPressMenuGuard(), // long-press OK is still held — don't auto-click the first option
@@ -799,6 +800,7 @@ private fun EpgMatchChooserDialog(
             Spacer(Modifier.height(16.dp))
             OwnTVButton(stringResource(R.string.common_cancel), onClick = onDismiss, style = OwnTVButtonStyle.SECONDARY)
         }
+    }
     }
 }
 
@@ -830,9 +832,10 @@ private fun GuideChannelRow(
     channelWidth: androidx.compose.ui.unit.Dp,
 ) {
     val colors = OwnTVTheme.colors
-    // Cache peek as the initial value → rows render instantly from the batch-loaded cache, no flash, no
-    // per-row query. Re-key on cacheRevision so a row re-reads the cache when the background catch-up
-    // lookback (pass 2) merges in.
+    // Cache peek as the initial value → a row scrolled back into view renders instantly, with no
+    // flash and no second query. A miss reads that one channel through the indexed per-channel query
+    // and warms the rows below it. Re-key on cacheRevision so a row re-reads after the cache is
+    // dropped (window moved, sync settled, shift changed).
     val cacheRevision by vm.cacheRevision.collectAsStateWithLifecycle()
     val programmes by produceState(initialValue = vm.cachedProgrammes(channel), channel.id, windowStart, cacheRevision) {
         value = vm.cachedProgrammes(channel) ?: vm.programmesFor(channel)

@@ -50,6 +50,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -81,6 +83,8 @@ import tv.own.owntv.features.settings.data.browsePanelGapTotal
 import tv.own.owntv.features.settings.data.computePanelWidths
 import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.features.settings.rememberPanelShares
+import tv.own.owntv.features.settings.data.computeCinematicLayout
+import tv.own.owntv.features.settings.data.defaultPanelShares
 import tv.own.owntv.features.shell.components.CategoryContextMenu
 import tv.own.owntv.features.shell.components.CategoryRail
 import tv.own.owntv.features.shell.components.MediaDetailsScreen
@@ -113,6 +117,7 @@ import tv.own.owntv.ui.components.trapVerticalFocusExit
 import tv.own.owntv.ui.components.SortChip
 import tv.own.owntv.ui.components.formatCount
 import tv.own.owntv.ui.components.ContentPanelFill
+import tv.own.owntv.ui.components.RailPanelFill
 import tv.own.owntv.ui.components.PreviewPanelFill
 import tv.own.owntv.ui.components.roundedPanel
 import tv.own.owntv.ui.theme.Dimens
@@ -157,7 +162,7 @@ fun MoviesScreen(
     val favoriteIds by vm.favoriteIds.collectAsStateWithLifecycle()
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
     val sortMode by vm.sortMode.collectAsStateWithLifecycle()
-    val viewMode by vm.viewMode.collectAsStateWithLifecycle()
+    val storedViewMode by vm.viewMode.collectAsStateWithLifecycle()
     val selectedMovie by vm.selectedMovie.collectAsStateWithLifecycle()
     val selectedMovieMeta by vm.selectedMovieMeta.collectAsStateWithLifecycle()
     val metadataMode by vm.metadataMode.collectAsStateWithLifecycle()
@@ -231,6 +236,12 @@ fun MoviesScreen(
     // CH+- key paging: shared settings + hoisted rail state. gridPaneFocused/railPaneFocused let
     // chNavPaging consume the keys only for whichever pane is focused.
     val settingsVm: tv.own.owntv.features.settings.SettingsViewModel = koinViewModel()
+    val vodLayout by settingsVm.vodLayout.collectAsStateWithLifecycle()
+    val cinematic = vodLayout == SettingsRepository.VodLayout.CINEMATIC
+    val cinematicDetailsPct by settingsVm.cinematicDetailsHeight(PanelSection.MOVIES).collectAsStateWithLifecycle()
+    // Cinematic is grid-only: the List rows have nowhere to put a full-bleed backdrop. The stored
+    // choice is deliberately not rewritten, so switching back to Separate restores the user's List.
+    val viewMode = if (cinematic) SettingsRepository.VodViewMode.GRID else storedViewMode
     val chNavEnabled by settingsVm.chNavEnabled.collectAsStateWithLifecycle()
     val chNavUpSkip by settingsVm.chNavUpSkip.collectAsStateWithLifecycle()
     val chNavDownSkip by settingsVm.chNavDownSkip.collectAsStateWithLifecycle()
@@ -362,6 +373,13 @@ fun MoviesScreen(
     // Manual panel widths (Settings → Panel Width Adjustment). The saved percentages now resolve
     // against the inside of one shared content container; no stored value is rewritten.
     val panelShares = rememberPanelShares(PanelSection.MOVIES, settingsVm)
+    // The focused title's artwork is the Cinematic background. Nothing else reads this.
+    val cinematicBackdrop = if (!cinematic) null else {
+        val meta = selectedMovieMeta?.takeIf { it.movieId == selectedMovie?.id }?.cache
+        tv.own.owntv.core.metadata.MetadataImages.backdrop(meta?.backdropPath, size = "w1280")
+            ?: selectedMovie?.backdropUrl?.takeIf { it.isNotBlank() }
+    }
+    tv.own.owntv.features.shell.components.CinematicBrowse(enabled = cinematic, backdropUrl = cinematicBackdrop, rounded = lockedKey == null) {
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -369,17 +387,32 @@ fun MoviesScreen(
             // padding, so the tab strip above the list is inside the same box rather than floating
             // over the wallpaper next to a second one.
             .then(
-                if (lockedKey == null) {
-                    Modifier.roundedPanel(fillColor = ContentPanelFill).padding(BrowseContainerPadding)
-                } else {
+                // Cinematic keeps the padding but never the plate — an opaque panel here would
+                // cover the backdrop it exists to show.
+                if (lockedKey != null) {
                     Modifier
+                } else if (cinematic) {
+                    Modifier.padding(BrowseContainerPadding)
+                } else {
+                    Modifier.roundedPanel(fillColor = ContentPanelFill).padding(BrowseContainerPadding)
                 },
             )
             .onFocusChanged { if (it.hasFocus) onChildFocused() },
     ) {
-    val previewVisible = panelShares?.preview != 0
+    // Cinematic has no preview column — the detail block above the grid replaces it.
+    val previewVisible = !cinematic && panelShares?.preview != 0
     val innerGapTotal = browsePanelGapTotal(previewVisible)
     val panels = panelShares?.let { computePanelWidths(it, maxWidth, innerGapTotal) }
+    // Cinematic resolves the same three stored numbers differently: two columns, and the third
+    // share as the detail block's height. See computeCinematicLayout for why.
+    val cine = if (!cinematic) null else {
+        computeCinematicLayout(
+            shares = panelShares ?: defaultPanelShares(PanelSection.MOVIES, maxWidth),
+            detailsPercent = cinematicDetailsPct,
+            totalWidth = maxWidth,
+            totalHeight = maxHeight,
+        )
+    }
     Row(
         modifier = Modifier
             .fillMaxSize(),
@@ -388,7 +421,7 @@ fun MoviesScreen(
         // their own three tabs above it, so there is no category rail to draw.
         if (lockedKey == null) {
         CategoryRail(
-            width = panels?.category ?: Dimens.RailWidthFixed,
+            width = cine?.category ?: panels?.category ?: Dimens.RailWidthFixed,
             categories = railItems.map {
                 RailCategory(
                     it.displayLabel(R.string.content_category_all_movies),
@@ -411,7 +444,10 @@ fun MoviesScreen(
             },
             listState = catListState,
             focusRequester = railFocus,
-            showPanel = false,
+            // Cinematic floats the category panel on the artwork as its own frosted plate; the
+            // Separate layout has the content panel behind it and needs none.
+            showPanel = cinematic,
+            panelFill = if (cinematic) RailPanelFill.copy(alpha = 0.55f) else null,
             modifier = Modifier
                 .onFocusChanged { railPaneFocused = it.hasFocus }
                 .chNavPaging(
@@ -439,7 +475,9 @@ fun MoviesScreen(
 
         Column(
             modifier = Modifier
-                .then(if (panels != null) Modifier.width(panels.list) else Modifier.weight(1.8f))
+                // Cinematic is two columns, so the content takes everything the rail leaves —
+                // the stored list share is a three-way split and would leave the preview's gap empty.
+                .then(if (cine != null) Modifier.width(cine.content) else if (panels != null) Modifier.width(panels.list) else Modifier.weight(1.8f))
                 .fillMaxSize()
                 .onFocusChanged { gridPaneFocused = it.hasFocus }
                 // CH+- key paging for this movies list/grid. currentTargetIndex falls back to the
@@ -504,15 +542,46 @@ fun MoviesScreen(
                 .then(if (lockedKey == null) Modifier.trapVerticalFocusExit() else Modifier)
                 .focusGroup()
         ) {
-            Text(stringResource(R.string.content_section_category, stringResource(R.string.common_nav_movies), selectedLabel), style = MaterialTheme.typography.headlineLarge, color = OwnTVTheme.colors.onSurface)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                pluralStringResource(R.plurals.content_count_movies, count, selectedLabel, count),
-                style = MaterialTheme.typography.titleMedium,
-                color = OwnTVTheme.colors.primary,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(14.dp))
+            if (cinematic) {
+                // The detail block takes the place of the big section heading: the artwork behind it
+                // already says which film this is, so the heading would be a second title.
+                val m = selectedMovie
+                val meta = selectedMovieMeta?.takeIf { it.movieId == m?.id }?.cache
+                if (m != null) {
+                    val providerPlot = m.plot?.takeIf { it.isNotBlank() }
+                    tv.own.owntv.features.shell.components.CinematicDetails(
+                        title = m.name,
+                        logoUrl = tv.own.owntv.core.metadata.MetadataImages.logo(meta?.logoPath),
+                        metaLine = metaLine(m, meta, metadataMode.tmdbWins),
+                        qualityBadges = tv.own.owntv.features.shell.components.cinematicQualityBadges(m.qualityRank, m.advertisedCapabilities),
+                        resumeLabel = selectedProgress
+                            ?.takeIf { selectedMovie?.id == m.id && !vm.isMovieCompleted(it) && it.positionMs > 0 }
+                            ?.let { stringResource(R.string.content_resume_at, tv.own.owntv.ui.components.formatTimestamp(it.positionMs)) },
+                        genres = jsonList(meta?.genresJson),
+                        plot = if (metadataMode.tmdbWins) meta?.overview ?: providerPlot else providerPlot ?: meta?.overview,
+                        cast = tv.own.owntv.core.metadata.MetadataCast.parse(meta?.castJson),
+                        modifier = Modifier.heightIn(max = cine?.detailsHeight ?: Dp.Unspecified),
+                    )
+                    Spacer(Modifier.height(14.dp))
+                }
+                Text(
+                    pluralStringResource(R.plurals.content_count_movies, count, selectedLabel, count),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = OwnTVTheme.colors.onSurface,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(8.dp))
+            } else {
+                Text(stringResource(R.string.content_section_category, stringResource(R.string.common_nav_movies), selectedLabel), style = MaterialTheme.typography.headlineLarge, color = OwnTVTheme.colors.onSurface)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    pluralStringResource(R.plurals.content_count_movies, count, selectedLabel, count),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = OwnTVTheme.colors.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(14.dp))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SearchBar(
                     query = searchQuery,
@@ -522,14 +591,17 @@ fun MoviesScreen(
                 )
                 Spacer(Modifier.width(10.dp))
                 SortChip(mode = sortMode, onToggle = vm::toggleSort, playlistLabel = stringResource(R.string.content_provider))
-                Spacer(Modifier.width(10.dp))
-                // View mode (#10): poster wall vs a compact list (more titles at once).
-                tv.own.owntv.ui.components.OwnTVButton(
-                    label = stringResource(if (viewMode == SettingsRepository.VodViewMode.GRID) R.string.settings_view_grid else R.string.settings_view_list),
-                    onClick = vm::toggleViewMode,
-                    icon = if (viewMode == SettingsRepository.VodViewMode.GRID) OwnTVIcon.MENU else OwnTVIcon.MOVIES,
-                    style = tv.own.owntv.ui.components.OwnTVButtonStyle.SECONDARY,
-                )
+                // View mode (#10): poster wall vs a compact list (more titles at once). Cinematic is
+                // grid-only, so the toggle would be a button that cannot change anything.
+                if (!cinematic) {
+                    Spacer(Modifier.width(10.dp))
+                    tv.own.owntv.ui.components.OwnTVButton(
+                        label = stringResource(if (viewMode == SettingsRepository.VodViewMode.GRID) R.string.settings_view_grid else R.string.settings_view_list),
+                        onClick = vm::toggleViewMode,
+                        icon = if (viewMode == SettingsRepository.VodViewMode.GRID) OwnTVIcon.MENU else OwnTVIcon.MOVIES,
+                        style = tv.own.owntv.ui.components.OwnTVButtonStyle.SECONDARY,
+                    )
+                }
             }
             Spacer(Modifier.height(14.dp))
 
@@ -631,6 +703,7 @@ fun MoviesScreen(
                 )
             }
         }
+    }
     }
     }
 
@@ -1094,6 +1167,7 @@ private fun buildMovieDetails(
     return tv.own.owntv.features.shell.components.MediaDetailsUi(
         title = movie.name,
         backdropUrl = backdrop,
+        logoUrl = tv.own.owntv.core.metadata.MetadataImages.logo(meta?.logoPath),
         posterUrl = poster,
         metaLine = metaLine(movie, meta, tmdbWins),
         genres = jsonList(meta?.genresJson),

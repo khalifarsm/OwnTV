@@ -55,6 +55,7 @@ fun MultiviewTileMenu(
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     BackHandler { onDismiss() }
 
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
     Box(
         modifier = Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup().longPressMenuGuard(),
         contentAlignment = Alignment.Center,
@@ -86,6 +87,7 @@ fun MultiviewTileMenu(
             }
             MenuRow(stringResource(R.string.content_close), OwnTVIcon.CLOSE, onDismiss)
         }
+    }
     }
 }
 

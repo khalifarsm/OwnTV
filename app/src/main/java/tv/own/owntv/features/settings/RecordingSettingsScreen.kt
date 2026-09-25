@@ -220,6 +220,7 @@ private fun RecordWatchingWarningDialog(onKeepOff: () -> Unit, onTurnOn: () -> U
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     BackHandler { onKeepOff() }
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onKeepOff) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -258,5 +259,6 @@ private fun RecordWatchingWarningDialog(onKeepOff: () -> Unit, onTurnOn: () -> U
                 )
             }
         }
+    }
     }
 }

@@ -1,7 +1,7 @@
 package tv.own.owntv.player
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,6 +42,8 @@ import tv.own.owntv.ui.components.OwnTVButton
 import tv.own.owntv.ui.components.OwnTVIcon
 import tv.own.owntv.ui.components.dialogPanel
 import tv.own.owntv.ui.components.displayLabel
+import tv.own.owntv.ui.components.modalScrim
+import tv.own.owntv.ui.components.trapAllFocusExit
 import tv.own.owntv.ui.format.localizedDecimal
 import tv.own.owntv.core.theme.GlassSurface
 import tv.own.owntv.ui.theme.OwnTVTheme
@@ -261,7 +262,11 @@ internal fun VolumeDialog(player: PlaybackEngine, onDismiss: () -> Unit) {
     )
     // Real dialog window for the same focus isolation as DialogScaffold (see there).
     tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
+        // Slightly stronger than the default wash: this one sits over moving video.
+        Box(
+            Modifier.fillMaxSize().modalScrim(strength = 1.2f).trapAllFocusExit().focusGroup(),
+            contentAlignment = Alignment.Center,
+        ) {
             Column(Modifier.dialogPanel(padding = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(stringResource(R.string.player_volume), style = MaterialTheme.typography.titleLarge, color = colors.onSurface)
                 Spacer(Modifier.height(20.dp))
@@ -294,7 +299,12 @@ internal fun SubtitleTimingDialog(player: PlaybackEngine, onDismiss: () -> Unit)
     LaunchedEffect(Unit) { requestFocusRetrying(focus) }
     tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
         tv.own.owntv.ui.theme.PopupFontTheme {
-            Box(Modifier.fillMaxSize().padding(bottom = 56.dp), contentAlignment = Alignment.BottomCenter) {
+            // No scrim by design — the video stays undimmed behind so speech and subtitles can be
+            // compared while the offset is nudged. Only the focus trap is added.
+            Box(
+                Modifier.fillMaxSize().padding(bottom = 56.dp).trapAllFocusExit().focusGroup(),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
                 Column(Modifier.dialogPanel(width = 560.dp, padding = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stringResource(R.string.player_subtitle_timing), style = MaterialTheme.typography.titleLarge, color = colors.onSurface)
                     Spacer(Modifier.height(10.dp))
@@ -351,7 +361,10 @@ private fun DialogScaffold(
     tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
         // Compact glass popup matching the storage picker: smaller font + narrow box.
         tv.own.owntv.ui.theme.PopupFontTheme(fontScale = 0.72f) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.fillMaxSize().modalScrim(strength = 1.2f).trapAllFocusExit().focusGroup(),
+                contentAlignment = Alignment.Center,
+            ) {
                 // Glass effect panel (same translucent chrome as the volume/timing dialogs) — the
                 // inner LazyColumn manages its own scroll, so scroll = false.
                 Column(modifier = Modifier.dialogPanel(width = 260.dp, corner = 16.dp, padding = 14.dp, scroll = false)) {

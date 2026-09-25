@@ -525,6 +525,7 @@ private fun AdvancedMetadataPopup(
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(60); runCatching { firstFocus.requestFocus() } }
     BackHandler { onDismiss() }
     tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss, fontScale = .50f) {
+      Box(Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(), contentAlignment = Alignment.Center) {
         Column(Modifier.dialogPanel(width = 560.dp, padding = 20.dp)) {
             Text(stringResource(R.string.settings_metadata_remote_advanced), style = MaterialTheme.typography.titleLarge, color = colors.onSurface)
             Spacer(Modifier.height(4.dp))
@@ -550,6 +551,7 @@ private fun AdvancedMetadataPopup(
                 OwnTVButton(stringResource(R.string.common_save), onSave)
             }
         }
+      }
     }
 }
 
@@ -582,6 +584,7 @@ internal fun CompanionKeyDialog(
     BackHandler { onDismiss() }
 
     tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
+      Box(Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(), contentAlignment = Alignment.Center) {
         Column(
             Modifier.dialogPanel(width = 520.dp, padding = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -659,5 +662,6 @@ internal fun CompanionKeyDialog(
                 modifier = Modifier.focusRequester(closeFocus),
             )
         }
+      }
     }
 }

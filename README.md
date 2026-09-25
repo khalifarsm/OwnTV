@@ -68,6 +68,7 @@ Questions, ideas, bug reports — **join the OwnTV Telegram group:**
 - **Multiple playlists** at once, with provider labels everywhere they could be confused
 - Rename, hide, reorder and combine categories; bulk rename rules
 - **TMDB** posters, plots, cast and trailers in 40 languages — scales to ~50k channels / ~168k movies
+- **Two layouts for Movies & Series** — the classic three panels, or **Cinematic**: the focused title's artwork full-bleed behind the whole screen, with its details and cast above a wide poster grid
 - Adjustable panel widths per section, including hiding the preview pane entirely
 
 ### 📥 Sources & EPG
@@ -150,7 +151,8 @@ More in **[extras/screenshots/](extras/screenshots/)**.
 
 This repository is the **Android TV app**. Everything underneath it — database, sync, parsers, EPG,
 backup, settings storage, the playback engines and every translated string — is a separate core
-library, shared with the mobile app.
+library, shared with the [**OwnTV Mobile**](https://github.com/ahXN00/OwnTV_Mobile) app for phones
+and tablets.
 
 ```
 OwnTV/  (this repo)
@@ -163,7 +165,15 @@ tv.own.owntv/
 OwnTV_Core/  (separate repo, published as tv.own.owntv:core / :player-core)
 ├── core/        database, network, parsers, Stalker, repository, sync, strings
 └── player-core/ libmpv + ExoPlayer engines, fallback ladder, watchdogs, diagnostics
+
+OwnTV_Mobile/  (separate repo, the phone and tablet app on the same core)
 ```
+
+**Related repositories**
+
+- 📱 **[OwnTV Mobile](https://github.com/ahXN00/OwnTV_Mobile)** — the phone and tablet app, built on
+  the same core.
+- 🧩 **[OwnTV Core](https://github.com/ahXN00/OwnTV_Core)** — the shared engine both apps run on.
 
 ## 📚 Docs (`extras/`)
 

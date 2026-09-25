@@ -123,6 +123,9 @@ fun CategoryRail(
     // Browse screens place this column inside one shared content panel. Overlays keep the standalone
     // panel so they remain independently raised above the screen beneath them.
     showPanel: Boolean = true,
+    /** Overrides the panel fill. Cinematic passes a translucent one so the backdrop shows through
+     *  even for users who have Glass Effect turned off — a solid plate there would hide the art. */
+    panelFill: androidx.compose.ui.graphics.Color? = null,
 ) {
     val colors = OwnTVTheme.colors
     var hasFocus by remember { mutableStateOf(false) }
@@ -169,7 +172,7 @@ fun CategoryRail(
     val railModifier = modifier.fillMaxHeight().width(width)
     Box(
         modifier = if (showPanel) {
-            railModifier.roundedPanel(fillColor = RailPanelFill, surface = GlassSurface.SIDEBAR)
+            railModifier.roundedPanel(fillColor = panelFill ?: RailPanelFill, surface = GlassSurface.SIDEBAR)
         } else {
             railModifier
         },

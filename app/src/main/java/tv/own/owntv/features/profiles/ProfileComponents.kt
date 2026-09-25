@@ -1,11 +1,10 @@
 package tv.own.owntv.features.profiles
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,6 +42,7 @@ import tv.own.owntv.core.database.entity.ProfileEntity
 import tv.own.owntv.ui.components.FocusableSurface
 import tv.own.owntv.ui.components.dialogPanel
 import tv.own.owntv.ui.components.modalScrim
+import tv.own.owntv.ui.components.trapAllFocusExit
 import tv.own.owntv.ui.components.OwnTVAvatar
 import tv.own.owntv.ui.components.OwnTVAvatars
 import tv.own.owntv.ui.components.OwnTVButton
@@ -65,7 +65,9 @@ internal fun ProfileScrim(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .modalScrim(),
+                .modalScrim()
+                .trapAllFocusExit()
+                .focusGroup(),
             contentAlignment = Alignment.Center,
         ) {
             // Scrollable so small/low-res screens can still reach the lower controls (Kids

@@ -43,6 +43,7 @@ import tv.own.owntv.ui.components.BrowseMode
 import tv.own.owntv.ui.components.FocusableSurface
 import tv.own.owntv.ui.components.OwnTVButton
 import tv.own.owntv.ui.components.OwnTVIcon
+import tv.own.owntv.ui.components.OwnTVPopup
 import tv.own.owntv.ui.components.dialogPanel
 import tv.own.owntv.ui.components.modalScrim
 import tv.own.owntv.ui.components.OwnTVButtonStyle
@@ -53,7 +54,6 @@ import tv.own.owntv.ui.components.roundedPanel
 import tv.own.owntv.ui.components.trapAllFocusExit
 import tv.own.owntv.core.theme.GlassSurface
 import tv.own.owntv.ui.theme.OwnTVTheme
-import tv.own.owntv.ui.theme.PopupFontTheme
 import java.io.File
 
 /**
@@ -372,7 +372,7 @@ private fun RemoteLocalChooserDialog(
     onLocal: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    PopupFontTheme {
+    OwnTVPopup(onDismissRequest = onDismiss) {
     val colors = OwnTVTheme.colors
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
@@ -407,7 +407,7 @@ private fun BackupPasswordDialog(
     onSkip: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    PopupFontTheme {
+    OwnTVPopup(onDismissRequest = onDismiss) {
     val colors = OwnTVTheme.colors
     var password by remember { mutableStateOf("") }
     val firstFocus = remember { FocusRequester() }
@@ -459,7 +459,7 @@ private fun ProfilePickerDialog(
     onConfirm: (Set<Long>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    PopupFontTheme {
+    OwnTVPopup(onDismissRequest = onDismiss) {
     val colors = OwnTVTheme.colors
     var ticked by remember(activeId) {
         mutableStateOf(if (profiles.any { it.id == activeId }) setOf(activeId) else emptySet())
@@ -530,7 +530,7 @@ private fun ProfilePinDialog(
     onUnlocked: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    PopupFontTheme {
+    OwnTVPopup(onDismissRequest = onDismiss) {
     val colors = OwnTVTheme.colors
     var pin by remember { mutableStateOf("") }
     var wrong by remember { mutableStateOf(false) }
@@ -594,9 +594,14 @@ private fun sectionDescriptionRes(section: BackupManager.Section): Int = when (s
     BackupManager.Section.SETTINGS -> R.string.settings_backup_section_settings_desc
 }
 
-/** Multi-select dialog over backup sections, with an "Everything" toggle on top. */
+/**
+ * Multi-select dialog over backup sections, with an "Everything" toggle on top.
+ *
+ * Internal rather than private because the first-run wizard asks the same question with the same
+ * words — see `SetupWizard.kt`. One dialog, so the two places can never drift apart.
+ */
 @Composable
-private fun SectionPickerDialog(
+internal fun SectionPickerDialog(
     title: String,
     sections: List<BackupManager.Section>,
     initial: Set<BackupManager.Section>,
@@ -604,7 +609,7 @@ private fun SectionPickerDialog(
     onConfirm: (Set<BackupManager.Section>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    PopupFontTheme {
+    OwnTVPopup(onDismissRequest = onDismiss) {
     val colors = OwnTVTheme.colors
     var selected by remember { mutableStateOf(initial) }
     val firstFocus = remember { FocusRequester() }

@@ -37,7 +37,9 @@ import androidx.tv.material3.Text
 import tv.own.owntv.R
 import tv.own.owntv.core.database.entity.SourceEntity
 import tv.own.owntv.ui.components.FocusableSurface
+import tv.own.owntv.ui.components.dialogPanel
 import tv.own.owntv.ui.components.modalScrim
+import tv.own.owntv.ui.components.trapAllFocusExit
 import tv.own.owntv.core.theme.GlassSurface
 import tv.own.owntv.ui.theme.OwnTVTheme
 
@@ -61,11 +63,12 @@ fun PlaylistPickerDialog(
 
     tv.own.owntv.ui.theme.PopupFontTheme {
     Box(
-        Modifier.fillMaxSize().modalScrim().focusGroup(),
+        Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
         contentAlignment = Alignment.Center,
     ) {
+        // scroll = false: the playlist list below scrolls itself, and two vertical scrollers cannot nest.
         Column(
-            Modifier.width(280.dp).clip(RoundedCornerShape(16.dp)).background(colors.surfaceContainerHigh).padding(14.dp),
+            Modifier.dialogPanel(width = 280.dp, corner = 16.dp, padding = 14.dp, scroll = false),
         ) {
             Text(stringResource(R.string.content_playlist_picker_title), style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
             Spacer(Modifier.height(4.dp))

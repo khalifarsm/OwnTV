@@ -52,6 +52,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -83,6 +85,8 @@ import tv.own.owntv.features.settings.data.browsePanelGapTotal
 import tv.own.owntv.features.settings.data.computePanelWidths
 import tv.own.owntv.core.settings.SettingsRepository
 import tv.own.owntv.features.settings.rememberPanelShares
+import tv.own.owntv.features.settings.data.computeCinematicLayout
+import tv.own.owntv.features.settings.data.defaultPanelShares
 import tv.own.owntv.features.shell.components.CategoryContextMenu
 import tv.own.owntv.features.shell.components.CategoryRail
 import tv.own.owntv.features.shell.components.PreviewPane
@@ -115,6 +119,7 @@ import tv.own.owntv.ui.components.trapVerticalFocusExit
 import tv.own.owntv.ui.components.SortChip
 import tv.own.owntv.ui.components.formatCount
 import tv.own.owntv.ui.components.ContentPanelFill
+import tv.own.owntv.ui.components.RailPanelFill
 import tv.own.owntv.ui.components.PreviewPanelFill
 import tv.own.owntv.ui.components.roundedPanel
 import tv.own.owntv.ui.components.dialogPanel
@@ -275,7 +280,7 @@ private fun SeriesGrid(
     val favoriteIds by vm.favoriteIds.collectAsStateWithLifecycle()
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
     val sortMode by vm.sortMode.collectAsStateWithLifecycle()
-    val viewMode by vm.viewMode.collectAsStateWithLifecycle()
+    val storedViewMode by vm.viewMode.collectAsStateWithLifecycle()
     val selectedSeries by vm.selectedSeries.collectAsStateWithLifecycle()
     val selectedSeriesMeta by vm.selectedSeriesMeta.collectAsStateWithLifecycle()
     val selectedSeriesDownloads by vm.selectedSeriesDownloads.collectAsStateWithLifecycle()
@@ -323,6 +328,12 @@ private fun SeriesGrid(
     // CH+- key paging (grid + category rail). gridPaneFocused/railPaneFocused gate which pane acts.
     val scope = rememberCoroutineScope()
     val settingsVm: tv.own.owntv.features.settings.SettingsViewModel = koinViewModel()
+    val vodLayout by settingsVm.vodLayout.collectAsStateWithLifecycle()
+    val cinematic = vodLayout == SettingsRepository.VodLayout.CINEMATIC
+    val cinematicDetailsPct by settingsVm.cinematicDetailsHeight(PanelSection.SERIES).collectAsStateWithLifecycle()
+    // Cinematic is grid-only. The stored choice is deliberately not rewritten, so switching back to
+    // Separate restores the user's List.
+    val viewMode = if (cinematic) SettingsRepository.VodViewMode.GRID else storedViewMode
     val chNavEnabled by settingsVm.chNavEnabled.collectAsStateWithLifecycle()
     val chNavUpSkip by settingsVm.chNavUpSkip.collectAsStateWithLifecycle()
     val chNavDownSkip by settingsVm.chNavDownSkip.collectAsStateWithLifecycle()
@@ -442,6 +453,13 @@ private fun SeriesGrid(
     // Manual panel widths (Settings → Panel Width Adjustment). The saved percentages now resolve
     // against the inside of one shared content container; no stored value is rewritten.
     val panelShares = rememberPanelShares(PanelSection.SERIES, settingsVm)
+    // The focused show's artwork is the Cinematic background. Nothing else reads this.
+    val cinematicBackdrop = if (!cinematic) null else {
+        val meta = selectedSeriesMeta?.takeIf { it.seriesId == selectedSeries?.id }?.cache
+        tv.own.owntv.core.metadata.MetadataImages.backdrop(meta?.backdropPath, size = "w1280")
+            ?: selectedSeries?.backdropUrl?.takeIf { it.isNotBlank() }
+    }
+    tv.own.owntv.features.shell.components.CinematicBrowse(enabled = cinematic, backdropUrl = cinematicBackdrop, rounded = lockedKey == null) {
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -449,17 +467,32 @@ private fun SeriesGrid(
             // padding, so the tab strip above the list is inside the same box rather than floating
             // over the wallpaper next to a second one.
             .then(
-                if (lockedKey == null) {
-                    Modifier.roundedPanel(fillColor = ContentPanelFill).padding(BrowseContainerPadding)
-                } else {
+                // Cinematic keeps the padding but never the plate — an opaque panel here would
+                // cover the backdrop it exists to show.
+                if (lockedKey != null) {
                     Modifier
+                } else if (cinematic) {
+                    Modifier.padding(BrowseContainerPadding)
+                } else {
+                    Modifier.roundedPanel(fillColor = ContentPanelFill).padding(BrowseContainerPadding)
                 },
             )
             .onFocusChanged { if (it.hasFocus) onChildFocused() },
     ) {
-    val previewVisible = panelShares?.preview != 0
+    // Cinematic has no preview column — the detail block above the grid replaces it.
+    val previewVisible = !cinematic && panelShares?.preview != 0
     val innerGapTotal = browsePanelGapTotal(previewVisible)
     val panels = panelShares?.let { computePanelWidths(it, maxWidth, innerGapTotal) }
+    // Cinematic resolves the same three stored numbers differently: two columns, and the third
+    // share as the detail block's height. See computeCinematicLayout for why.
+    val cine = if (!cinematic) null else {
+        computeCinematicLayout(
+            shares = panelShares ?: defaultPanelShares(PanelSection.SERIES, maxWidth),
+            detailsPercent = cinematicDetailsPct,
+            totalWidth = maxWidth,
+            totalHeight = maxHeight,
+        )
+    }
     Row(
         modifier = Modifier
             .fillMaxSize(),
@@ -468,7 +501,7 @@ private fun SeriesGrid(
         // their own three tabs above it, so there is no category rail to draw.
         if (lockedKey == null) {
         CategoryRail(
-            width = panels?.category ?: Dimens.RailWidthFixed,
+            width = cine?.category ?: panels?.category ?: Dimens.RailWidthFixed,
             categories = railItems.map {
                 RailCategory(
                     it.displayLabel(R.string.content_category_all_series),
@@ -491,7 +524,10 @@ private fun SeriesGrid(
             },
             listState = catListState,
             focusRequester = railFocus,
-            showPanel = false,
+            // Cinematic floats the category panel on the artwork as its own frosted plate; the
+            // Separate layout has the content panel behind it and needs none.
+            showPanel = cinematic,
+            panelFill = if (cinematic) RailPanelFill.copy(alpha = 0.55f) else null,
             modifier = Modifier
                 .onFocusChanged { railPaneFocused = it.hasFocus }
                 .chNavPaging(
@@ -519,7 +555,8 @@ private fun SeriesGrid(
 
         Column(
             modifier = Modifier
-                .then(if (panels != null) Modifier.width(panels.list) else Modifier.weight(1.8f))
+                // Cinematic is two columns, so the content takes everything the rail leaves.
+                .then(if (cine != null) Modifier.width(cine.content) else if (panels != null) Modifier.width(panels.list) else Modifier.weight(1.8f))
                 .fillMaxSize()
                 .onFocusChanged { gridPaneFocused = it.hasFocus }
                 .chNavPaging(
@@ -579,14 +616,54 @@ private fun SeriesGrid(
                 .then(if (lockedKey == null) Modifier.trapVerticalFocusExit() else Modifier)
                 .focusGroup()
         ) {
-            Text(stringResource(R.string.content_section_category, stringResource(R.string.common_nav_series), selectedLabel), style = MaterialTheme.typography.headlineLarge, color = OwnTVTheme.colors.onSurface)
-            Spacer(Modifier.height(4.dp))
-            Text(pluralStringResource(R.plurals.content_count_series, count, selectedLabel, count), style = MaterialTheme.typography.titleMedium, color = OwnTVTheme.colors.primary, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(14.dp))
+            if (cinematic) {
+                // The detail block takes the place of the big section heading: the artwork behind it
+                // already says which show this is, so the heading would be a second title.
+                val s = selectedSeries
+                val meta = selectedSeriesMeta?.takeIf { it.seriesId == s?.id }?.cache
+                if (s != null) {
+                    val tmdbWins = metadataMode.tmdbWins
+                    val year = if (tmdbWins) meta?.year ?: s.year else s.year ?: meta?.year
+                    val rating = if (tmdbWins) meta?.rating?.takeIf { it > 0 } ?: s.rating?.takeIf { it > 0 }
+                        else s.rating?.takeIf { it > 0 } ?: meta?.rating?.takeIf { it > 0 }
+                    val providerPlot = s.plot?.takeIf { it.isNotBlank() }
+                    tv.own.owntv.features.shell.components.CinematicDetails(
+                        title = s.name,
+                        logoUrl = tv.own.owntv.core.metadata.MetadataImages.logo(meta?.logoPath),
+                        metaLine = listOfNotNull(
+                            year?.let { localizedInteger(it, grouping = false) },
+                            rating?.let { stringResource(R.string.content_rating, it) },
+                        ).joinToString(stringResource(R.string.content_metadata_separator)),
+                        qualityBadges = tv.own.owntv.features.shell.components.cinematicQualityBadges(s.qualityRank, s.advertisedCapabilities),
+                        // A show's episodes are only synced once it is opened, so there is nothing
+                        // here to resume from until then — see the Series note in the plan.
+                        resumeLabel = null,
+                        genres = jsonStringList(meta?.genresJson),
+                        plot = if (tmdbWins) meta?.overview ?: providerPlot else providerPlot ?: meta?.overview,
+                        cast = tv.own.owntv.core.metadata.MetadataCast.parse(meta?.castJson),
+                        modifier = Modifier.heightIn(max = cine?.detailsHeight ?: Dp.Unspecified),
+                    )
+                    Spacer(Modifier.height(14.dp))
+                }
+                Text(
+                    pluralStringResource(R.plurals.content_count_series, count, selectedLabel, count),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = OwnTVTheme.colors.onSurface,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(8.dp))
+            } else {
+                Text(stringResource(R.string.content_section_category, stringResource(R.string.common_nav_series), selectedLabel), style = MaterialTheme.typography.headlineLarge, color = OwnTVTheme.colors.onSurface)
+                Spacer(Modifier.height(4.dp))
+                Text(pluralStringResource(R.plurals.content_count_series, count, selectedLabel, count), style = MaterialTheme.typography.titleMedium, color = OwnTVTheme.colors.primary, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(14.dp))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SearchBar(query = searchQuery, onQueryChange = vm::setSearchQuery, placeholder = stringResource(R.string.content_search_series, selectedLabel), modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(10.dp))
                 SortChip(mode = sortMode, onToggle = vm::toggleSort, playlistLabel = stringResource(R.string.content_provider))
+                // Cinematic is grid-only, so the toggle would be a button that changes nothing.
+                if (!cinematic) {
                 Spacer(Modifier.width(10.dp))
                 tv.own.owntv.ui.components.OwnTVButton(
                     label = stringResource(if (viewMode == SettingsRepository.VodViewMode.GRID) R.string.settings_view_grid else R.string.settings_view_list),
@@ -594,6 +671,7 @@ private fun SeriesGrid(
                     icon = if (viewMode == SettingsRepository.VodViewMode.GRID) OwnTVIcon.MENU else OwnTVIcon.SERIES,
                     style = tv.own.owntv.ui.components.OwnTVButtonStyle.SECONDARY,
                 )
+                }
             }
             Spacer(Modifier.height(14.dp))
 
@@ -751,6 +829,7 @@ private fun SeriesGrid(
                 }
             }
         }
+    }
     }
     }
 
@@ -974,6 +1053,7 @@ private fun buildSeriesDetails(
     return tv.own.owntv.features.shell.components.MediaDetailsUi(
         title = s.name,
         backdropUrl = backdrop,
+        logoUrl = tv.own.owntv.core.metadata.MetadataImages.logo(meta?.logoPath),
         posterUrl = poster,
         metaLine = metaLine,
         genres = jsonStringList(meta?.genresJson),

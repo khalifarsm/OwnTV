@@ -55,7 +55,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
-import coil3.compose.AsyncImage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import androidx.tv.material3.MaterialTheme
@@ -161,22 +160,25 @@ fun LiveScreen(
     val moveState by vm.moveState.collectAsStateWithLifecycle()
     val categoryMoveState by vm.categoryMoveState.collectAsStateWithLifecycle()
 
-    // Current programme title for each loaded channel (id → title), batched in ONE query against the
-    // stored guide. Drives the small "now playing" subtitle on each channel row. Recomputed when the page
-    // contents change and every 60s (the programme airing "now" turns over). Channels with no guide are
-    // simply absent from the map → their row shows no second line.
-    val channelIdsKey = remember(channels.itemSnapshotList) {
-        channels.itemSnapshotList.items.filterNotNull().map { it.id }
+    // Current programme title for each loaded channel (id → title), against the stored guide. Drives
+    // the small "now playing" subtitle on each channel row. Channels with no guide are absent from the
+    // map → their row shows no second line.
+    //
+    // An appended page asks only about the channels it added; the view model keeps the rest. This
+    // used to re-query every loaded channel on every append and again every 60 seconds, which deep
+    // in a large category was a dozen chunked queries a minute to learn nothing new.
+    val nowPlaying by vm.nowPlaying.collectAsStateWithLifecycle()
+    val loadedChannels = channels.itemSnapshotList.items.filterNotNull()
+    LaunchedEffect(loadedChannels.size, loadedChannels.firstOrNull()?.id, loadedChannels.lastOrNull()?.id) {
+        vm.ensureNowPlaying(loadedChannels)
     }
-    val nowPlaying by produceState<Map<Long, String>>(initialValue = emptyMap(), channelIdsKey) {
-        if (channelIdsKey.isEmpty()) { value = emptyMap(); return@produceState }
-        val loaded = channels.itemSnapshotList.items.filterNotNull()
-        value = runCatching { vm.nowPlayingFor(loaded) }.getOrDefault(emptyMap())
-        // Refresh periodically so a programme ending/starting is reflected while the list stays open.
-        // This producer is auto-cancelled (and restarted) when channelIdsKey changes.
+    // Turnover happens on the minute, so wait for the next one rather than 60s from mount — otherwise
+    // rows change late and at different instants from each other.
+    LaunchedEffect(Unit) {
         while (true) {
-            kotlinx.coroutines.delay(60_000)
-            value = runCatching { vm.nowPlayingFor(loaded) }.getOrDefault(emptyMap())
+            val now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(60_000 - (now % 60_000))
+            vm.refreshNowPlaying(channels.itemSnapshotList.items.filterNotNull())
         }
     }
     // Preview runs only when the player isn't busy (previewEnabled) AND the user hasn't turned it off.
@@ -887,15 +889,11 @@ private fun ChannelRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Box(
-                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(colors.surfaceContainerLowest),
-                contentAlignment = Alignment.Center,
+            tv.own.owntv.ui.components.ChannelLogoTile(
+                logoUrl = channel.displayLogoUrl,
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
             ) {
-                if (!channel.displayLogoUrl.isNullOrBlank()) {
-                    AsyncImage(model = channel.displayLogoUrl, contentDescription = null, modifier = Modifier.fillMaxSize())
-                } else {
-                    OwnTVIcon(OwnTVIcon.LIVE_TV, tint = colors.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                }
+                OwnTVIcon(OwnTVIcon.LIVE_TV, tint = colors.onSurfaceVariant, modifier = Modifier.size(24.dp))
             }
             // Provider channel number, in a fixed-width strip so every name below starts at the same x
             // however many digits the number has. Hidden entirely when the setting is off.
@@ -961,6 +959,7 @@ private fun ChannelContextMenu(
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     androidx.activity.compose.BackHandler { onDismiss() }
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
     Box(
         modifier = Modifier.fillMaxSize().modalScrim()
             .trapAllFocusExit().focusGroup()
@@ -1013,6 +1012,7 @@ private fun ChannelContextMenu(
             ChannelMenuDivider()
             ChannelMenuAction(stringResource(R.string.content_close), onDismiss, OwnTVIcon.CLOSE, Modifier.fillMaxWidth())
         }
+    }
     }
 }
 
@@ -1107,9 +1107,15 @@ private fun LivePreviewPane(
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(colors.surfaceContainerLowest),
             contentAlignment = Alignment.Center,
         ) {
-            if (!channel.displayLogoUrl.isNullOrBlank()) {
-                AsyncImage(model = channel.displayLogoUrl, contentDescription = null, modifier = Modifier.size(120.dp))
-            } else {
+            // No fill of its own: the 16:9 box behind it is already the video container's. The tile
+            // plates itself only if this channel's logo would be unreadable. Video covers it anyway
+            // once playback starts.
+            tv.own.owntv.ui.components.ChannelLogoTile(
+                logoUrl = channel.displayLogoUrl,
+                modifier = Modifier.size(160.dp).clip(RoundedCornerShape(12.dp)),
+                imageModifier = Modifier.size(120.dp),
+                fill = Color.Transparent,
+            ) {
                 OwnTVIcon(OwnTVIcon.LIVE_TV, tint = colors.onSurfaceVariant, modifier = Modifier.size(56.dp))
             }
             if (previewPlaying) {
@@ -1474,14 +1480,14 @@ private fun CatchupDialog(
 internal fun EpgMatchDialog(
     channelName: String,
     currentMatch: String?,
-    loadChannels: suspend (String) -> List<tv.own.owntv.core.database.entity.EpgChannelEntity>,
+    loadChannels: suspend (String) -> List<tv.own.owntv.core.epg.GuideCandidate>,
     onPick: (String) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = OwnTVTheme.colors
     var query by remember { mutableStateOf("") }
-    val results by androidx.compose.runtime.produceState<List<tv.own.owntv.core.database.entity.EpgChannelEntity>?>(initialValue = null, query) {
+    val results by androidx.compose.runtime.produceState<List<tv.own.owntv.core.epg.GuideCandidate>?>(initialValue = null, query) {
         kotlinx.coroutines.delay(250)
         value = runCatching { loadChannels(query) }.getOrDefault(emptyList())
     }
@@ -1505,7 +1511,7 @@ internal fun EpgMatchDialog(
     tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
     tv.own.owntv.ui.theme.PopupFontTheme(fontScale = 0.75f) {
     androidx.compose.foundation.layout.Box(
-        Modifier.fillMaxSize().modalScrim().focusGroup(),
+        Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
         contentAlignment = Alignment.Center,
     ) {
         // Same small-screen cap as CatchupDialog: search bar + buttons must stay reachable.
@@ -1536,7 +1542,7 @@ internal fun EpgMatchDialog(
                             style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
                         )
                         else -> LazyColumn(Modifier.fillMaxWidth().height(listHeight), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(list, key = { it.id }) { epg ->
+                            items(list, key = { it.epgChannelId }) { epg ->
                                 FocusableSurface(
                                     onClick = { onPick(epg.epgChannelId) },
                                     modifier = if (epg == list.first()) Modifier.fillMaxWidth().focusRequester(firstItemFocus) else Modifier.fillMaxWidth(),

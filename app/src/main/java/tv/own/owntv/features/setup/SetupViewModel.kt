@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import tv.own.owntv.core.database.entity.SourceEntity
+import tv.own.owntv.core.backup.BackupManager
 import tv.own.owntv.core.setup.SourceImporter
 import tv.own.owntv.core.settings.PlaylistRefresh
 import tv.own.owntv.core.sync.SyncScopeChoice
@@ -150,15 +151,30 @@ class SetupViewModel(
     /** Link the chosen existing sources to the new profile, then re-sync each one. */
     fun linkExisting(sourceIds: Set<Long>) = runImport { importer.linkExisting(sourceIds) }
 
-    /** Restore everything from a backup file (merges profiles & sources, then activates one). Encrypted
-     *  backups first ask for the backup password via [SourceImporter.ImportState.NeedPassword]. */
-    fun importBackup(file: File, onDone: (Long?) -> Unit) {
-        viewModelScope.launch { if (importer.importBackup(file)) onRestored(onDone) }
+    /**
+     * Restore a backup file (merges profiles & sources, then activates one). Encrypted backups first
+     * ask for the backup password via [SourceImporter.ImportState.NeedPassword].
+     *
+     * [sections] is what the user ticked before the restore began, and defaults to all of it — which
+     * is what the wizard did unconditionally until it gained a picker of its own. Settings → Backup
+     * & Restore has always asked; the first run, where a restore is most likely, did not.
+     */
+    fun importBackup(
+        file: File,
+        onDone: (Long?) -> Unit,
+        sections: Set<BackupManager.Section> = BackupManager.Section.entries.toSet(),
+    ) {
+        viewModelScope.launch { if (importer.importBackup(file, sections)) onRestored(onDone) }
     }
 
     /** Continue an encrypted restore once the user provides (or skips, password = null) the passphrase. */
-    fun restoreWithPassword(file: File, password: String?, onDone: (Long?) -> Unit) {
-        viewModelScope.launch { if (importer.restoreWithPassword(file, password)) onRestored(onDone) }
+    fun restoreWithPassword(
+        file: File,
+        password: String?,
+        onDone: (Long?) -> Unit,
+        sections: Set<BackupManager.Section> = BackupManager.Section.entries.toSet(),
+    ) {
+        viewModelScope.launch { if (importer.restoreWithPassword(file, password, sections)) onRestored(onDone) }
     }
 
     // A backup may restore several profiles or a PIN-locked active profile. Restoring data is not

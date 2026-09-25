@@ -65,6 +65,7 @@ import tv.own.owntv.core.theme.GlassSurface
 import tv.own.owntv.core.theme.UiFontScale
 import tv.own.owntv.core.theme.UiZoom
 import tv.own.owntv.features.profiles.ProfileEditorDialog
+import tv.own.owntv.features.settings.SectionPickerDialog
 import tv.own.owntv.features.settings.FirstRunLanguageSelector
 import tv.own.owntv.ui.components.BrandLockup
 import tv.own.owntv.ui.components.BrowseMode
@@ -111,6 +112,12 @@ fun Onboarding(firstRun: Boolean, onDone: (Long?) -> Unit, onCancel: () -> Unit,
     var importOrigin by remember { mutableStateOf(Step.ADD_SOURCE) }
     // Where Back from the backup-restore picker returns to (first-run choice vs. add-content step).
     var backupOrigin by remember { mutableStateOf(Step.ADD_CONTENT) }
+    // The chosen backup file and what the user wants out of it. A file with no choice yet is what
+    // raises the section dialog below; picking a file no longer starts the restore by itself.
+    // Settings → Backup & Restore has always asked which sections to apply — the wizard took the
+    // whole file, so "playlists but not that device's settings" could not be said here.
+    var restoreFile by remember { mutableStateOf<java.io.File?>(null) }
+    var restoreSections by remember { mutableStateOf<Set<tv.own.owntv.core.backup.BackupManager.Section>?>(null) }
 
     // Refresh the "existing playlists" availability whenever we land on the add-content step.
     LaunchedEffect(step) { if (step == Step.ADD_CONTENT) existing = runCatching { vm.availableExistingSources() }.getOrDefault(emptyList()) }
@@ -210,16 +217,43 @@ fun Onboarding(firstRun: Boolean, onDone: (Long?) -> Unit, onCancel: () -> Unit,
                 backups = vm.remoteBackups,
                 onStart = { port -> vm.startRemoteRestore(port) },
                 onStop = { vm.stopRemoteRestore() },
-                // An uploaded file starts the restore; the state-driven IMPORT_BACKUP screen shows
-                // progress, the password prompt, or the result from here on.
-                onBackupReceived = { file -> vm.importBackup(file, onDone); step = Step.IMPORT_BACKUP },
+                // An uploaded file asks what to take out of it first; the state-driven IMPORT_BACKUP
+                // screen shows progress, the password prompt, or the result from here on.
+                onBackupReceived = { file ->
+                    restoreSections = null
+                    restoreFile = file
+                    step = Step.IMPORT_BACKUP
+                },
                 onBack = { vm.stopRemoteRestore(); step = Step.IMPORT_BACKUP_CHOOSER },
             )
             Step.IMPORT_BACKUP -> ImportBackupScreen(
                 state = importState,
-                onPick = { file -> vm.importBackup(file, onDone) }, // restore activates a profile itself
-                onPassword = { file, pass -> vm.restoreWithPassword(file, pass, onDone) },
-                onBack = { vm.reset(); step = backupOrigin },
+                onPick = { file -> restoreSections = null; restoreFile = file },
+                // The same choice, carried across the password question: a sealed file is chosen
+                // from before it can be opened, so the answer has to outlive the prompt.
+                onPassword = { file, pass ->
+                    vm.restoreWithPassword(file, pass, onDone, restoreSections ?: allRestoreSections)
+                },
+                onBack = { vm.reset(); restoreFile = null; restoreSections = null; step = backupOrigin },
+            )
+        }
+        // A file is chosen and nothing has been asked of it yet — so ask, over whatever is behind.
+        restoreFile?.takeIf { restoreSections == null }?.let { file ->
+            SectionPickerDialog(
+                title = stringResource(R.string.settings_backup_what_restore),
+                // Every section, not only the ones the file holds: Settings can narrow the list
+                // because it has already opened the container, and this has not — a sealed file says
+                // nothing until its password arrives, and asking for that before the user has said
+                // what they want would be the wrong order. Ticking a section the file lacks restores
+                // nothing for it.
+                sections = tv.own.owntv.core.backup.BackupManager.Section.entries,
+                initial = allRestoreSections,
+                confirmLabel = stringResource(R.string.settings_backup_restore_action),
+                onConfirm = { chosen ->
+                    restoreSections = chosen
+                    vm.importBackup(file, onDone, chosen) // restore activates a profile itself
+                },
+                onDismiss = { vm.reset(); restoreFile = null; step = backupOrigin },
             )
         }
         // Semi-auto EPG: after the first playlist imports, ask → sync (live count) → done (overlays "All set!").
@@ -771,6 +805,10 @@ private fun ImportBackupScreen(
         )
     }
 }
+
+/** Every section, the wizard's starting point for a restore. */
+private val allRestoreSections: Set<tv.own.owntv.core.backup.BackupManager.Section>
+    get() = tv.own.owntv.core.backup.BackupManager.Section.entries.toSet()
 
 /** Restore chooser: send the backup from another device (LAN companion server) or pick a local file. */
 @Composable

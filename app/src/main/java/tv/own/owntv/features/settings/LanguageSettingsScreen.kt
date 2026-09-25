@@ -394,6 +394,7 @@ private fun TranslationContributionDialog(onDismiss: () -> Unit) {
     LaunchedEffect(Unit) { urlFocus.requestFocus() }
     BackHandler { onDismiss() }
 
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -500,6 +501,7 @@ private fun TranslationContributionDialog(onDismiss: () -> Unit) {
                 )
             }
         }
+    }
     }
 }
 

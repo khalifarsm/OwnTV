@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -330,11 +331,36 @@ fun OwnTVShell(
         MainSection.SERIES -> playingSeries?.let { seriesFavoriteIds.contains(it.id) } ?: false
         else -> false
     }
+    // Tell core which playlist is on screen, so its background catalogue drain steps aside while the
+    // user is watching (core's N1f-3). Core cannot work this out alone: the player engines are handed
+    // a URL and have no notion of a sourceId, and fullscreen playback deliberately never claims a
+    // connection in OpenStreamRegistry — that register is the Multiview/recording budget. This screen
+    // holds the row, so this is the only place the answer exists.
+    val watchSession = koinInject<tv.own.owntv.core.live.WatchSession>()
+    val watchingSourceId = if (playerMode == PlayerMode.NONE) {
+        null
+    } else {
+        when (zapSource) {
+            MainSection.LIVE_TV -> previewChannel?.sourceId
+            MainSection.MOVIES -> playingMovie?.sourceId
+            MainSection.SERIES -> playingSeries?.sourceId
+            else -> null
+        }
+    }
+    // DisposableEffect, not LaunchedEffect: zapping to another playlist has to close the old session
+    // before opening the new one, and leaving the shell has to close the last one — a leaked session
+    // would hold the drain off for good.
+    DisposableEffect(watchingSourceId) {
+        watchingSourceId?.let { watchSession.open(it) }
+        onDispose { watchingSourceId?.let { watchSession.close(it) } }
+    }
     // Current programme per channel for the in-player channel list overlay (small subtitle under each row).
     // Only resolved while the overlay is actually open. Keyed on the channel set so a zap-list change re-resolves.
-    val overlayNowPlaying by produceState<Map<Long, String>>(emptyMap(), showChannelList, zapChannels) {
-        if (!showChannelList || zapChannels.size <= 1) { value = emptyMap(); return@produceState }
-        value = runCatching { liveVm.nowPlayingFor(zapChannels) }.getOrDefault(emptyMap())
+    // Shares the Live list's resolved titles, so opening the overlay over a list already on screen
+    // asks for nothing, and only genuinely new channels cost a query.
+    val overlayNowPlaying by liveVm.nowPlaying.collectAsStateWithLifecycle()
+    LaunchedEffect(showChannelList, zapChannels) {
+        if (showChannelList && zapChannels.size > 1) liveVm.ensureNowPlaying(zapChannels)
     }
     // Recently-watched channels for the right-hand history overlay — re-read each time it opens (and
     // after a zap, since tuning writes a new history row) so the newest channel is always on top.
@@ -342,10 +368,8 @@ fun OwnTVShell(
         if (!showHistoryList) { value = emptyList(); return@produceState }
         value = runCatching { liveVm.historyChannels() }.getOrDefault(emptyList())
     }
-    val historyNowPlaying by produceState<Map<Long, String>>(emptyMap(), historyChannels) {
-        if (historyChannels.isEmpty()) { value = emptyMap(); return@produceState }
-        value = runCatching { liveVm.nowPlayingFor(historyChannels) }.getOrDefault(emptyMap())
-    }
+    val historyNowPlaying = overlayNowPlaying // one shared map; the history rail adds to it below
+    LaunchedEffect(historyChannels) { liveVm.ensureNowPlaying(historyChannels) }
     // Batch 7 — the single most-recent resumable item, surfaced as a shared top-bar "Continue" chip.
     val continueTarget by homeVm.continueTarget.collectAsStateWithLifecycle()
 

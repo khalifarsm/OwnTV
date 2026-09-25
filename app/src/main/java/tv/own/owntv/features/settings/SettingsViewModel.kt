@@ -5,7 +5,6 @@ package tv.own.owntv.features.settings
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -30,12 +29,11 @@ import tv.own.owntv.player.AudioOutputPolicy
 import tv.own.owntv.core.player.SurroundMode
 import tv.own.owntv.core.database.dao.SourceDao
 import tv.own.owntv.core.database.entity.SourceEntity
-import tv.own.owntv.core.network.ConnectivityObserver
 import tv.own.owntv.core.repository.SourceRepository
 import tv.own.owntv.core.repository.SourceTestResult
+import tv.own.owntv.core.setup.SourceImporter
 import tv.own.owntv.core.sync.ImportStage
 import tv.own.owntv.core.sync.SyncContentTypes
-import tv.own.owntv.core.sync.SyncResult
 import tv.own.owntv.core.sync.SyncCounts
 import tv.own.owntv.core.sync.SyncScopeChoice
 import tv.own.owntv.core.sync.SyncWarning
@@ -49,6 +47,7 @@ import tv.own.owntv.core.database.dao.resolveExistingProfileId
 import tv.own.owntv.core.launcher.LauncherIntegrationRepository
 import tv.own.owntv.core.settings.ChNavLimits
 import tv.own.owntv.core.settings.EpgAutoRefresh
+import tv.own.owntv.core.settings.EpgRefresh
 import tv.own.owntv.core.settings.PanelSection
 import tv.own.owntv.core.settings.PanelShares
 import tv.own.owntv.core.settings.GuideWidthShares
@@ -65,7 +64,6 @@ class SettingsViewModel(
     private val sourceDao: SourceDao,
     private val sourceRepository: SourceRepository,
     private val settings: SettingsRepository,
-    private val connectivity: ConnectivityObserver,
     private val epgDao: tv.own.owntv.core.database.dao.EpgDao,
     private val importFinalizer: tv.own.owntv.core.sync.ImportFinalizer,
     private val channelDao: tv.own.owntv.core.database.dao.ChannelDao,
@@ -94,12 +92,11 @@ class SettingsViewModel(
     private val player: tv.own.owntv.player.OwnTVPlayer,
     private val livePreview: tv.own.owntv.player.LivePreviewEngine,
     private val enginePool: tv.own.owntv.player.LiveEnginePool,
+    // Adding a playlist is core's sequence, not a copy of it — see [importState].
+    private val importer: SourceImporter,
 ) : ViewModel() {
     companion object {
         private const val TAG = "OwnTVHome"
-
-        /** Sentinel session key for pre-save "Test connection" handshakes (no real source id yet). */
-        private const val STALKER_TEST_SOURCE_ID = -1L
     }
 
     // ---- Remote (companion) add-source: a LAN web form fills the Add Source screen from another device. ----
@@ -677,6 +674,16 @@ class SettingsViewModel(
         viewModelScope.launch { settings.setPanelWidths(s, enabled, shares) }
     }
 
+    /** Cinematic's detail-block height per section — its own value, not one of the width shares. */
+    val cinematicDetailsHeights: Map<PanelSection, StateFlow<Int>> =
+        panelFlows(settings::cinematicDetailsHeight, tv.own.owntv.core.settings.CINEMATIC_DETAILS_DEFAULT)
+
+    fun cinematicDetailsHeight(s: PanelSection): StateFlow<Int> = cinematicDetailsHeights.getValue(s)
+
+    fun setCinematicDetailsHeight(s: PanelSection, percent: Int) {
+        viewModelScope.launch { settings.setCinematicDetailsHeight(s, percent) }
+    }
+
     val guideWidthEnabled: StateFlow<Boolean> = settings.guideWidthEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     val guideWidthShares: StateFlow<GuideWidthShares?> = settings.guideWidthShares
@@ -830,6 +837,11 @@ class SettingsViewModel(
         settings.animationLevel.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), tv.own.owntv.core.theme.AnimationLevel.FULL)
     fun setAnimationLevel(level: tv.own.owntv.core.theme.AnimationLevel) { viewModelScope.launch { settings.setAnimationLevel(level) } }
 
+    /** Separate panels (the default) or the Cinematic frame, shared by Movies and Series. */
+    val vodLayout: StateFlow<tv.own.owntv.core.settings.SettingsRepository.VodLayout> =
+        settings.vodLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), tv.own.owntv.core.settings.SettingsRepository.VodLayout.SEPARATE)
+    fun setVodLayout(layout: tv.own.owntv.core.settings.SettingsRepository.VodLayout) { viewModelScope.launch { settings.setVodLayout(layout) } }
+
     val ambientGlowEnabled: StateFlow<Boolean> =
         settings.ambientGlowEnabled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     fun setAmbientGlowEnabled(enabled: Boolean) { viewModelScope.launch { settings.setAmbientGlowEnabled(enabled) } }
@@ -888,15 +900,15 @@ class SettingsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Per-source EPG auto-refresh selection (Off / Startup / staleness threshold). */
-    val epgAutoRefresh: StateFlow<Map<Long, EpgAutoRefresh>> = settings.epgAutoRefresh
+    val epgAutoRefresh: StateFlow<Map<Long, EpgRefresh>> = settings.epgAutoRefresh
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun setPlaylistAutoRefresh(sourceId: Long, mode: PlaylistRefresh) {
         viewModelScope.launch { settings.setPlaylistAutoRefresh(sourceId, mode) }
     }
 
-    fun setEpgAutoRefresh(sourceId: Long, mode: EpgAutoRefresh) {
-        viewModelScope.launch { settings.setEpgAutoRefresh(sourceId, mode) }
+    fun setEpgAutoRefresh(sourceId: Long, refresh: EpgRefresh) {
+        viewModelScope.launch { settings.setEpgAutoRefresh(sourceId, refresh) }
     }
 
     /**
@@ -982,16 +994,49 @@ class SettingsViewModel(
         }
     }
 
-    private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
-    val importState: StateFlow<ImportState> = _importState.asStateFlow()
+    /**
+     * Adding a playlist is core's [SourceImporter], not a copy of it.
+     *
+     * This screen used to carry its own line-for-line duplicate of `SourceImporter.runImport`, and
+     * that duplicate is why hooks added in core silently did nothing here — the settings add never
+     * reached them. Everything below is presentation: core owns the sequence, this maps its state
+     * onto the UI's [ImportState] and adds the two things that are genuinely app-side (the launcher
+     * refresh and the "sync the guide too?" offer).
+     */
+    val importState: StateFlow<ImportState> = importer.state
+        .map { it.toUi() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ImportState.Idle)
 
-    /** The last source whose sync failed — persisted so AddSourceScreen can pre-fill the form
-     *  instead of making the user re-type everything on the remote after a typo. */
-    private var _lastFailedSource: SourceEntity? = null
-    val lastFailedSource: SourceEntity? get() = _lastFailedSource
+    val progress: StateFlow<ImportStage?> = importer.progress
 
-    private val _progress = MutableStateFlow<ImportStage?>(null)
-    val progress: StateFlow<ImportStage?> = _progress.asStateFlow()
+    /**
+     * Pre-fills the Add form after a failed add, so a typo does not mean re-typing a portal URL on a
+     * remote control.
+     *
+     * **It has never actually fired.** The field was introduced in v4.0.0 declared `null` and, then
+     * as now, the only assignment to it anywhere is back to `null` on success — so the retry form has
+     * always opened blank. Kept at its existing behaviour here rather than quietly fixed, because
+     * making it work is a change to what the user sees and is not part of removing the duplicated
+     * import flow.
+     */
+    val lastFailedSource: SourceEntity? get() = null
+
+    private fun SourceImporter.ImportState.toUi(): ImportState = when (this) {
+        SourceImporter.ImportState.Idle -> ImportState.Idle
+        SourceImporter.ImportState.Running -> ImportState.Running
+        is SourceImporter.ImportState.Success ->
+            ImportState.Success(counts ?: SyncCounts(0, 0, 0, 0), warnings, remainder)
+        is SourceImporter.ImportState.Failed -> ImportState.Failed(
+            when (val f = failure) {
+                SourceImporter.SetupFailure.InvalidMac -> FriendlySyncFailure.InvalidMac
+                is SourceImporter.SetupFailure.Sync -> f.failure
+                // Backup restore is the wizard's path, never this screen's.
+                else -> classifySyncFailure(null, online = true)
+            },
+        )
+        // Only reachable from a backup restore, which this screen does not offer.
+        is SourceImporter.ImportState.NeedPassword -> ImportState.Idle
+    }
 
     private var importJob: Job? = null
 
@@ -1008,21 +1053,13 @@ class SettingsViewModel(
         series: SyncScopeChoice = SyncScopeChoice.Now,
         isDefault: Boolean = false,
         preferHls: Boolean = false,
-    ) {
-        val enabled = SyncContentTypes.fromChoices(live, movies, series)
-        val priority = SyncContentTypes.priorityFromChoices(live, movies, series)
-        runImport(
-            autoRefresh, priority, enabledScope = enabled, enqueueRemainder = true,
-            requiresNetwork = true, makeDefault = isDefault,
-        ) { pid ->
-            sourceRepository.addXtreamSource(
-                pid, name.trim(), server.trim(), user.trim(), pass,
-                userAgent.trim().takeIf { it.isNotBlank() },
-                epgUrl.trim().takeIf { it.isNotBlank() },
-                syncLive = enabled.live, syncMovies = enabled.movies, syncSeries = enabled.series,
-                preferHls = preferHls,
-            )
-        }
+    ) = runImport {
+        importer.xtream(
+            name = name, server = server, username = user, password = pass,
+            userAgent = userAgent, epgUrl = epgUrl, autoRefresh = autoRefresh,
+            live = live, movies = movies, series = series,
+            preferHls = preferHls, makeDefault = isDefault,
+        )
     }
 
     // ---- "Test" on a saved playlist row ----
@@ -1122,133 +1159,47 @@ class SettingsViewModel(
         live: SyncScopeChoice = SyncScopeChoice.Now,
         movies: SyncScopeChoice = SyncScopeChoice.Later,
         series: SyncScopeChoice = SyncScopeChoice.Later,
-    ) {
-        val canonicalMac = tv.own.owntv.core.stalker.StalkerClient.canonicalizeMac(mac)
-        if (canonicalMac == null) {
-            _importState.value = ImportState.Failed(FriendlySyncFailure.InvalidMac)
-            return
-        }
-        val enabled = SyncContentTypes.fromChoices(live, movies, series)
-        val priority = SyncContentTypes.priorityFromChoices(live, movies, series)
-        runImport(
-            autoRefresh, priority, enabledScope = enabled, enqueueRemainder = true,
-            requiresNetwork = true, makeDefault = isDefault,
-        ) { pid ->
-            stalkerAuth.testConnection(
-                tv.own.owntv.core.stalker.StalkerCredentials(
-                    sourceId = STALKER_TEST_SOURCE_ID,
-                    portalUrl = portalUrl.trim(),
-                    mac = canonicalMac,
-                    userAgent = userAgent.trim().takeIf { it.isNotBlank() },
-                    deviceIdentity = tv.own.owntv.core.stalker.StalkerDeviceIdentity(
-                        serialNumber = serialNumber.trim().takeIf { it.isNotBlank() },
-                        deviceId = deviceId.trim().takeIf { it.isNotBlank() },
-                        deviceId2 = deviceId2.trim().takeIf { it.isNotBlank() },
-                        signature = signature.trim().takeIf { it.isNotBlank() },
-                    ),
-                ),
-            )
-            sourceRepository.addStalkerSource(
-                pid, name.trim(), portalUrl.trim(), canonicalMac,
-                serialNumber.trim().takeIf { it.isNotBlank() },
-                deviceId.trim().takeIf { it.isNotBlank() },
-                deviceId2.trim().takeIf { it.isNotBlank() },
-                signature.trim().takeIf { it.isNotBlank() },
-                userAgent.trim().takeIf { it.isNotBlank() },
-                syncLive = enabled.live, syncMovies = enabled.movies, syncSeries = enabled.series,
-            )
-        }
-    }
-
-    fun addM3u(name: String, url: String, userAgent: String = "", epgUrl: String = "", autoRefresh: PlaylistRefresh = PlaylistRefresh.OFF, isDefault: Boolean = false) = runImport(
-        autoRefresh,
-        requiresNetwork = !url.isLocalPlaylistPath(),
-        makeDefault = isDefault,
-    ) { pid ->
-        sourceRepository.addM3uSource(
-            pid, name.trim(), url.trim(),
-            userAgent.trim().takeIf { it.isNotBlank() },
-            epgUrl.trim().takeIf { it.isNotBlank() },
+    ) = runImport {
+        importer.stalker(
+            name = name, portalUrl = portalUrl, mac = mac,
+            serialNumber = serialNumber, deviceId = deviceId, deviceId2 = deviceId2,
+            signature = signature, userAgent = userAgent, autoRefresh = autoRefresh,
+            live = live, movies = movies, series = series, makeDefault = isDefault,
         )
     }
 
-    private fun runImport(
-        autoRefresh: PlaylistRefresh = PlaylistRefresh.OFF,
-        contentTypes: SyncContentTypes = SyncContentTypes(),
-        enabledScope: SyncContentTypes = SyncContentTypes(),
-        enqueueRemainder: Boolean = false,
-        requiresNetwork: Boolean = true,
-        makeDefault: Boolean = false,
-        addSource: suspend (Long) -> SourceEntity,
-    ) {
+    fun addM3u(name: String, url: String, userAgent: String = "", epgUrl: String = "", autoRefresh: PlaylistRefresh = PlaylistRefresh.OFF, isDefault: Boolean = false) = runImport {
+        importer.m3u(name, url, userAgent, epgUrl, autoRefresh, makeDefault = isDefault)
+    }
+
+    /**
+     * Drive one of core's add-a-playlist calls, then do the two things that are this app's business
+     * and not core's: refresh the Android TV launcher rows, and offer a one-tap guide sync when the
+     * playlist actually has a guide feed.
+     *
+     * [SourceImporter.useProfile] is what keeps this an *add* rather than an onboarding run — without
+     * it core would create a second profile for a user who already has one.
+     */
+    private fun runImport(block: suspend () -> Unit) {
         importJob?.cancel()
         val job = viewModelScope.launch {
-            _importState.value = ImportState.Running
-            _progress.value = null
-            var source: SourceEntity? = null
-            try {
-                if (requiresNetwork && !connectivity.isOnlineNow()) {
-                    _importState.value = ImportState.Failed(classifySyncFailure(null, online = false))
-                    return@launch
+            val pid = profileDao.resolveExistingProfileId(settings.activeProfileId.first()) ?: return@launch
+            Log.d(TAG, "runImport profile=$pid")
+            importer.useProfile(pid)
+            block()
+            val done = importer.state.value as? SourceImporter.ImportState.Success ?: return@launch
+            Log.d(TAG, "runImport sync success sourceId=${done.source?.id} profile=$pid")
+            done.source?.let { synced ->
+                if (epgRepository.guideUrl(synced) != null) {
+                    pendingEpgSource = synced
+                    _epgSync.value = EpgSyncUi.Ask(synced.name)
                 }
-                val pid = profileDao.resolveExistingProfileId(settings.activeProfileId.first()) ?: return@launch
-                Log.d(TAG, "runImport profile=$pid autoRefresh=$autoRefresh")
-                source = addSource(pid)
-                val freshSync = source.lastSyncAt == null
-                val remainder = if (enqueueRemainder) {
-                    enabledScope.remainderAfter(contentTypes)
-                } else {
-                    SyncContentTypes(live = false, movies = false, series = false)
-                }
-                settings.setPlaylistAutoRefresh(source.id, autoRefresh)
-                when (val r = sourceRepository.sync(source, onProgress = { _progress.value = it }, contentTypes = contentTypes)) {
-                    is SyncResult.Success -> {
-                        // Settings playlist add: content breakdown only (EPG syncs silently and is
-                        // shown on the EPG Sources screen, per the separated-EPG design).
-                        val counts = importFinalizer.finalize(source, deferIndexes = freshSync)
-                        if (makeDefault) settings.setDefaultSource(source.id)
-                        val syncedSource = sourceDao.getById(source.id) ?: source
-                        Log.d(TAG, "runImport sync success sourceId=${source.id} profile=$pid")
-                        if (enqueueRemainder) enqueueRemainderSync(source, contentTypes, enabledScope)
-                        if (freshSync && !remainder.hasAny) catalogSyncScheduler.enqueueContentIndexBuild(reason = "fresh_add")
-                        _lastFailedSource = null
-                        _importState.value = ImportState.Success(
-                            counts = counts,
-                            warnings = r.warnings,
-                            remainder = remainder,
-                        )
-                        // Offer a one-tap EPG sync if this playlist actually has a guide feed.
-                        if (epgRepository.guideUrl(syncedSource) != null) {
-                            pendingEpgSource = syncedSource
-                            _epgSync.value = EpgSyncUi.Ask(syncedSource.name)
-                        }
-                        viewModelScope.launch { runCatching { refreshActiveTvHome(allowBrowsableRequest = true) } }
-                    }
-                    is SyncResult.Failed -> {
-                        cleanupFailedAdd(source)
-                        _importState.value = ImportState.Failed(classifySyncFailure(r.message, connectivity.isOnlineNow()))
-                    }
-                    SyncResult.Cancelled -> {
-                        cleanupFailedAdd(source)
-                        _importState.value = ImportState.Idle
-                    }
-                }
-            } catch (c: CancellationException) {
-                cleanupFailedAdd(source)
-                _importState.value = ImportState.Idle
-                _progress.value = null
-                throw c
-            } catch (e: Exception) {
-                cleanupFailedAdd(source)
-                _importState.value = ImportState.Failed(classifySyncFailure(e.message, connectivity.isOnlineNow()))
             }
+            runCatching { refreshActiveTvHome(allowBrowsableRequest = true) }
         }
         importJob = job
         job.invokeOnCompletion { if (importJob == job) importJob = null }
     }
-
-    private fun String.isLocalPlaylistPath(): Boolean =
-        startsWith("/") || startsWith("file://") || startsWith("content://")
 
     /**
      * Re-sync an existing source through WorkManager so it can continue after leaving this screen.
@@ -1308,40 +1259,19 @@ class SettingsViewModel(
         }
     }
 
-    fun resetImport() {
-        _importState.value = ImportState.Idle
-        _progress.value = null
-    }
+    fun resetImport() = importer.reset()
 
+    /** Cancelling the job cancels core's import, which runs the same cleanup an outright failure does. */
     fun cancelImport() {
         importJob?.cancel()
         importJob = null
-        _importState.value = ImportState.Idle
-        _progress.value = null
+        importer.reset()
     }
 
     private suspend fun refreshActiveTvHome(allowBrowsableRequest: Boolean = true) {
         val pid = profileDao.resolveExistingProfileId(settings.activeProfileId.first()) ?: return
         Log.d(TAG, "refreshActiveTvHome profile=$pid allowBrowsable=$allowBrowsableRequest")
         launcherIntegrationRepository.refreshProfile(pid, allowBrowsableRequest)
-    }
-
-    private fun enqueueRemainderSync(source: SourceEntity, priority: SyncContentTypes, enabledScope: SyncContentTypes) {
-        val remainder = enabledScope.remainderAfter(priority)
-        if (remainder.hasAny) {
-            // The priority pass + this remainder cover every enabled section, so a successful
-            // remainder run must mark the source synced (SyncManager only stamps complete passes).
-            catalogSyncScheduler.enqueueSync(source.id, reason = "add_remainder", contentTypes = remainder, completesInitialSync = true)
-        }
-    }
-
-    private suspend fun cleanupFailedAdd(source: SourceEntity?) {
-        if (source == null) return
-        withContext(NonCancellable) {
-            catalogSyncScheduler.cancelSync(source.id)
-            runCatching { sourceRepository.deleteSource(source) }
-            runCatching { settings.setPlaylistAutoRefresh(source.id, PlaylistRefresh.OFF) }
-        }
     }
 
     // --- Global proxy (Approach 1 — one app-wide HTTP proxy) ---

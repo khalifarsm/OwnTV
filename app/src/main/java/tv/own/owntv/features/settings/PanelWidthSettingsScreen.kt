@@ -46,9 +46,12 @@ import tv.own.owntv.R
 import tv.own.owntv.core.settings.PanelSection
 import tv.own.owntv.core.settings.PanelShares
 import tv.own.owntv.core.settings.PanelWidthLimits
+import tv.own.owntv.core.settings.CINEMATIC_DETAILS_DEFAULT
+import tv.own.owntv.core.settings.CINEMATIC_DETAILS_MAX
 import tv.own.owntv.features.settings.data.BrowseColumnGap
 import tv.own.owntv.features.settings.data.BrowseColumnDividerSpace
 import tv.own.owntv.features.settings.data.BrowseContainerPadding
+import tv.own.owntv.features.settings.data.cinematicWidths
 import tv.own.owntv.features.settings.data.defaultPanelShares
 import tv.own.owntv.ui.components.ContentPanelFill
 import tv.own.owntv.ui.components.FocusableSurface
@@ -117,6 +120,11 @@ fun PanelWidthSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) 
             )
             Spacer(Modifier.height(16.dp))
 
+            val vodLayout by vm.vodLayout.collectAsStateWithLifecycle()
+            val cinematic = vodLayout == tv.own.owntv.core.settings.SettingsRepository.VodLayout.CINEMATIC
+            val detailsHeights = PanelSection.entries.associateWith {
+                vm.cinematicDetailsHeight(it).collectAsStateWithLifecycle().value
+            }
             PanelSection.entries.forEach { section ->
                 val enabled by vm.panelWidthEnabled.getValue(section).collectAsStateWithLifecycle()
                 val shares by vm.panelShares.getValue(section).collectAsStateWithLifecycle()
@@ -132,8 +140,14 @@ fun PanelWidthSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) 
                         R.string.settings_panel_width_summary,
                         current.category,
                         current.list,
-                        previewLabel(section),
-                        current.preview,
+                        // In Cinematic the third number is a height held separately, so the summary
+                        // must show THAT value — not the preview share, which is always 0 there.
+                        if (cinematic && section != PanelSection.LIVE) {
+                            stringResource(R.string.settings_panel_width_details_height)
+                        } else {
+                            previewLabel(section)
+                        },
+                        if (cinematic && section != PanelSection.LIVE) detailsHeights.getValue(section) else current.preview,
                     ),
                     chip = stringResource(if (enabled) R.string.settings_live_latency_custom else R.string.settings_subtitle_default),
                     primaryChip = enabled,
@@ -171,6 +185,23 @@ private fun previewLabel(section: PanelSection): String =
     stringResource(if (section == PanelSection.LIVE) R.string.settings_panel_width_preview else R.string.settings_panel_width_poster)
 
 /**
+ * The second and third slider labels, which change with the layout.
+ *
+ * In Cinematic there is no preview panel to size, so the third slider sets the height of the detail
+ * block instead and the second one is sizing the whole content column, not a list next to a preview.
+ * Live TV is never Cinematic, so its labels never move.
+ */
+@Composable
+private fun listLabel(section: PanelSection, cinematic: Boolean): String =
+    if (cinematic && section != PanelSection.LIVE) stringResource(R.string.settings_panel_width_content_area)
+    else stringResource(R.string.settings_panel_width_list)
+
+@Composable
+private fun thirdSliderLabel(section: PanelSection, cinematic: Boolean): String =
+    if (cinematic && section != PanelSection.LIVE) stringResource(R.string.settings_panel_width_details_height)
+    else stringResource(R.string.settings_panel_width_preview_panel, previewLabel(section))
+
+/**
  * The per-section popup: master toggle, then one −/+ stepper per panel, a running total, and
  * Reset / Okay.
  *
@@ -189,10 +220,27 @@ private fun PanelWidthDialog(
     val savedEnabled by vm.panelWidthEnabled.getValue(section).collectAsStateWithLifecycle()
     val savedShares by vm.panelShares.getValue(section).collectAsStateWithLifecycle()
     val livePreviewEnabled by vm.livePreviewEnabled.collectAsStateWithLifecycle()
+    val vodLayout by vm.vodLayout.collectAsStateWithLifecycle()
+    val cinematic = vodLayout == tv.own.owntv.core.settings.SettingsRepository.VodLayout.CINEMATIC
     val stock = remember(section, rowWidth) { defaultPanelShares(section, rowWidth) }
+    // Cinematic's detail block is a HEIGHT, so it is its own stored value and takes no part in the
+    // 100% row budget below. Live TV is never Cinematic and never shows this row.
+    val showDetailsHeight = cinematic && section != PanelSection.LIVE
+    val savedDetailsHeight by vm.cinematicDetailsHeight(section).collectAsStateWithLifecycle()
 
     var enabled by remember { mutableStateOf(savedEnabled) }
     var draft by remember { mutableStateOf(savedShares ?: stock) }
+    // Seeded ONCE, exactly like `draft` above — never resynced from the flow while the dialog is up.
+    // The saved value is a `stateIn(WhileSubscribed)` StateFlow, so it starts at the default and the
+    // stored number lands a frame later; a resync would let that late emission overwrite whatever the
+    // user had already stepped to, and the edit would save as the default instead.
+    var detailsHeight by remember(section) { mutableStateOf(savedDetailsHeight) }
+    // Cinematic is two columns, so the third share must read 0 or the total would never reach 100
+    // with only two steppers on screen. Whatever a preview panel used to hold goes to the content
+    // area — that is where the space physically goes once the preview column is gone.
+    LaunchedEffect(showDetailsHeight) {
+        if (showDetailsHeight) draft = cinematicWidths(draft)
+    }
     // The red note only appears once the user has actually tried to save an unbalanced total.
     var showError by remember { mutableStateOf(false) }
     var showPreviewDisableConfirmation by remember { mutableStateOf(false) }
@@ -211,7 +259,7 @@ private fun PanelWidthDialog(
         if (showPreviewDisableConfirmation) showPreviewDisableConfirmation = false else onDismiss()
     }
 
-    tv.own.owntv.ui.theme.PopupFontTheme {
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
         Box(
             Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
             contentAlignment = Alignment.Center,
@@ -240,6 +288,8 @@ private fun PanelWidthDialog(
                         OwnTVButton(
                             stringResource(R.string.common_ok),
                             onClick = {
+                                // This branch is Live TV only, which is never Cinematic — the
+                                // details height is saved by the main Okay button below.
                                 vm.setPanelWidths(section, enabled, draft)
                                 onDismiss()
                             },
@@ -288,18 +338,45 @@ private fun PanelWidthDialog(
 
                 if (enabled) {
                     Spacer(Modifier.height(10.dp))
+                    if (showDetailsHeight) {
+                        // Two columns that must total 100 are really one slider, so they move
+                        // together: whatever one gives up, the other takes. Without this the total
+                        // could sit at 100 while a column was over the per-panel 80% cap, which
+                        // `isValid` rejects — Okay then refused to save anything at all, silently.
+                        // The 20..80 bounds are what keep BOTH sides inside that cap.
+                        StepRow(
+                            stringResource(R.string.settings_panel_width_category),
+                            draft.category,
+                            minimum = PanelWidthLimits.TOTAL - PanelWidthLimits.MAX,
+                            maximum = PanelWidthLimits.MAX,
+                        ) { draft = PanelShares(it, PanelWidthLimits.TOTAL - it, 0) }
+                        Spacer(Modifier.height(6.dp))
+                        StepRow(
+                            listLabel(section, cinematic),
+                            draft.list,
+                            minimum = PanelWidthLimits.TOTAL - PanelWidthLimits.MAX,
+                            maximum = PanelWidthLimits.MAX,
+                        ) { draft = PanelShares(PanelWidthLimits.TOTAL - it, it, 0) }
+                    } else {
                     StepRow(stringResource(R.string.settings_panel_width_category), draft.category) { draft = draft.copy(category = it) }
                     Spacer(Modifier.height(6.dp))
-                    StepRow(stringResource(R.string.settings_panel_width_list), draft.list) { draft = draft.copy(list = it) }
-                    Spacer(Modifier.height(6.dp))
-                    StepRow(
-                        stringResource(R.string.settings_panel_width_preview_panel, previewLabel(section)),
-                        draft.preview,
-                        minimum = 0,
-                    ) { draft = draft.copy(preview = it) }
+                    StepRow(listLabel(section, cinematic), draft.list) { draft = draft.copy(list = it) }
+                    }
+                    if (!showDetailsHeight) {
+                        Spacer(Modifier.height(6.dp))
+                        StepRow(
+                            thirdSliderLabel(section, cinematic),
+                            draft.preview,
+                            minimum = 0,
+                        ) { draft = draft.copy(preview = it) }
+                    }
 
                     Spacer(Modifier.height(10.dp))
-                    PanelWidthDiagram(draft)
+                    PanelWidthDiagram(
+                        draft,
+                        cinematic = showDetailsHeight,
+                        detailsHeight = detailsHeight,
+                    )
 
                     Spacer(Modifier.height(10.dp))
                     Row(
@@ -322,6 +399,32 @@ private fun PanelWidthDialog(
                             textAlign = TextAlign.Center,
                             // Same width as a stepper's value + one button, so it lines up under them.
                             modifier = Modifier.padding(end = 48.dp).width(64.dp),
+                        )
+                    }
+
+                    if (showDetailsHeight) {
+                        // Below the total on purpose: everything above adds up to 100% across the
+                        // row, and this one does not take part in that at all.
+                        Spacer(Modifier.height(12.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(colors.outlineVariant.copy(alpha = 0.5f)),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        StepRow(
+                            stringResource(R.string.settings_panel_width_details_height),
+                            detailsHeight,
+                            minimum = 0,
+                            maximum = CINEMATIC_DETAILS_MAX,
+                        ) { detailsHeight = it }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.settings_panel_width_details_hint),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 2.dp),
                         )
                     }
 
@@ -348,7 +451,11 @@ private fun PanelWidthDialog(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OwnTVButton(
                         stringResource(R.string.common_reset),
-                        onClick = { draft = stock; showError = false },
+                        onClick = {
+                            draft = stock
+                            detailsHeight = CINEMATIC_DETAILS_DEFAULT
+                            showError = false
+                        },
                         style = OwnTVButtonStyle.SECONDARY,
                     )
                     Spacer(Modifier.weight(1f))
@@ -364,6 +471,7 @@ private fun PanelWidthDialog(
                                 showPreviewDisableConfirmation = true
                             } else {
                                 vm.setPanelWidths(section, enabled, draft)
+                                if (showDetailsHeight) vm.setCinematicDetailsHeight(section, detailsHeight)
                                 onDismiss()
                             }
                         },
@@ -377,8 +485,52 @@ private fun PanelWidthDialog(
 
 /** The browse layout users are sizing: one container, two plain columns, and a raised preview. */
 @Composable
-private fun PanelWidthDiagram(shares: PanelShares) {
+private fun PanelWidthDiagram(shares: PanelShares, cinematic: Boolean = false, detailsHeight: Int = 0) {
     val colors = OwnTVTheme.colors
+    if (cinematic) {
+        // Two columns, and the third share drawn as a band across the top of the content one —
+        // because that is what it now does. A preview column here would be a picture of a panel
+        // the layout does not have.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(ContentPanelFill)
+                .padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .weight(shares.category.toFloat().coerceAtLeast(1f))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.onSurface.copy(alpha = 0.035f)),
+            )
+            Spacer(Modifier.width(BrowseColumnGap))
+            Column(
+                Modifier
+                    .weight(shares.list.toFloat().coerceAtLeast(1f))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(8.dp)),
+            ) {
+                val detailsWeight = detailsHeight.toFloat().coerceIn(0f, CINEMATIC_DETAILS_MAX.toFloat())
+                Box(
+                    Modifier
+                        .weight(detailsWeight)
+                        .fillMaxWidth()
+                        .background(colors.primary.copy(alpha = 0.32f)),
+                )
+                Box(
+                    Modifier
+                        .weight((100f - detailsWeight).coerceAtLeast(1f))
+                        .fillMaxWidth()
+                        .background(colors.onSurface.copy(alpha = 0.10f)),
+                )
+            }
+        }
+        return
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()

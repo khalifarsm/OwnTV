@@ -1,6 +1,50 @@
 # Changelog
 
-## v5.0.1 — unreleased
+## v5.0.2 — 2026-09-21
+
+### 🩹 Fixes
+
+#### 💥 The app would not open after updating from v5.0.0
+
+Updating straight from `v5.0.0` to `v5.0.1` left the app unable to start: the splash screen appeared
+and the app closed again, every time, because the one-off upgrade of the stored guide data could not
+finish and was retried on every launch. Nothing was wrong with the data — the upgrade step asked
+SQLite to begin a save point that was already open, which the newer storage engine in `v5.0.1`
+refuses. The upgrade now runs as one piece and completes on the first launch, with your profiles,
+playlists, favourites and history untouched.
+
+Televisions already running `v5.0.1` are affected only if they never managed to open it. A box that
+opened `v5.0.1` once has already finished the upgrade and was never at risk.
+
+## v5.0.1 — 2026-09-21
+
+### 🎬 A cinematic layout for Movies & Series
+
+- **Settings → Layout → "Movies & Series layout".** A second way to browse films and shows, beside
+  the one you have now. *Separate panels* — categories, the list and a preview side by side — stays
+  the default, so nothing changes until you pick otherwise. The chooser shows a small bar diagram
+  under each option so you can see the difference without reading.
+- **The focused title's artwork fills the whole screen.** Its backdrop sits behind the category panel
+  and the posters, washed down on the left so the text stays readable over any picture. Move along
+  the row and it cross-fades to the next film — and holding the D-pad down does not fire a download
+  per poster it passes under; only the title you settle on is fetched.
+- **Details above the posters, and no buttons up there.** The studio's own title lettering where TMDB
+  has it (with the film's name printed under it, because plenty of those logos are black line-art and
+  would be invisible on a dark background), then the rating, year, running time, quality badges
+  (4K/HDR/5.1 as the provider advertised them), genres, the plot, and the cast as photos. Nothing in
+  that area can take focus — it is there to read. **OK** on the focused poster still plays or opens
+  it, **long-press** still opens the same menu with Resume, Favourite, TMDB details and the rest, and
+  a half-watched film still shows a green *Resume* badge and the green sliver on its poster.
+- **Grid only, and your List choice is remembered.** The List/Grid toggle is hidden while Cinematic
+  is on, because a full-bleed backdrop has nowhere to go behind a row of text. Switching back to
+  *Separate panels* restores whichever of the two you were using.
+- **Panel Width Adjustment works in both.** In Cinematic the section has two columns rather than
+  three, so its second slider becomes *Content area* and the two move together — whatever one gives
+  up, the other takes. The third becomes **Details height**, and it now sits **below** the Total size
+  line because it is a height and takes no part in that 100%: set it to 0% for nothing but posters,
+  or raise it for more plot and cast, without touching either width. Live TV is untouched.
+- **It follows your other settings.** Text grows with the app font size, the category panel follows
+  your Glass Effect setting, and with *Animations = Off* every fade snaps instantly.
 
 ### ✨ Set a new television up from the one you already have
 
@@ -14,6 +58,130 @@
   can only receive — but the tick list is the same one Backup & Restore uses, so you can take the
   playlists and leave the old box's settings behind. Closes #189.
 
+### 🚀 Refreshing a playlist gets out of your way
+
+- **The background catalogue fill pauses while you watch.** A Stalker playlist keeps downloading its
+  film and series lists after setup, quietly, for several minutes. It now stops the moment you start
+  watching anything from that playlist and picks up again afterwards — on an account that only allows
+  one stream, that download was competing with your picture.
+- **The category you open is filled first.** Open a film or series category that has not finished
+  downloading and it jumps to the front of the queue instead of waiting its turn behind every
+  category above it.
+
+### 📅 A week of guide, and you choose how much
+
+- **"Guide days to keep" in Settings → EPG Sources.** The app used to store two days of upcoming
+  guide and throw away the rest, however much your provider sent — so the grid stopped at tomorrow,
+  and two days after a refresh the guide was simply empty. It now keeps as many days as you ask for,
+  seven by default, up to a fortnight. One number decides everything: how much is downloaded, how
+  much is kept, and how far the grid scrolls.
+- **The grid scrolls the whole week.** It was fixed at 24 hours forward regardless of what was
+  stored.
+- **Old programmes are kept only where they can be replayed.** A week of finished programmes used to
+  be kept for every channel, though only catch-up channels can play any of it back. Catch-up channels
+  keep their full archive — including ones you matched to a guide by hand — and everything else keeps
+  six hours, which is all the player's "Before" slot needs. On one television that took the stored
+  guide from 397,415 programmes to 172,083 *while storing a week ahead instead of two days*.
+- **Guide refresh can be set to "every N days",** exactly like a playlist's. Anything you had already
+  chosen is untouched — a source set to 48 hours stays on 48 hours.
+
+### 🔄 Local sync, tidied up on the television
+
+- **Every row now carries a mark that means what it does.** One archive-box icon used to stand for
+  "let this television be found", for your paired phone *and* for "send my data there" — three
+  different jobs, and the same mark Backup & Restore uses one row above. Sync mode now shows a
+  globe, Connect a magnifier, your phone a phone, and Send and Receive a matching pair of arrows.
+- **The PIN and the QR code have a card of their own, beside the list.** They used to be wedged
+  between the buttons and your paired devices, so turning Sync mode on shoved the device rows a
+  third of a screen downwards while you were looking at them. Now nothing moves — the card simply
+  appears next to the list.
+- **Choosing what to do with a paired device opens a panel.** Press OK on your phone and Send,
+  Receive, Merge and Forget appear in a popup that names the device, with the remote already on the
+  first choice. Before, the list was replaced where it stood and the highlight was left on the Back
+  arrow, so the first press of the D-pad was wasted.
+- **"Forget this device" now looks like the destructive one** — below a divider and drawn in red,
+  instead of sitting flush under "Merge" as though it were a fourth way of syncing.
+- **The remote can no longer fall out of the screen.** A Down press at the end of the list used to
+  jump focus up into the Search button in the top bar, leaving the screen behind.
+- **The screen says what it is for.** It now carries the same one-line description the More screen
+  shows, the paired devices sit under their own heading, and Sync mode's state is shown as a badge
+  in the corner whether it is on or off. "Working…" is a proper row with a spinner rather than a
+  stray line of grey text.
+
+### 🪟 Every popup now behaves like every other popup
+
+- **Dialogs and menus all follow your Glass Effect, popup size and popup font.** Around forty of
+  them were built before the shared popup was, and each one opted out of something: a hand-drawn
+  panel ignored the Glass setting, a fixed black wash ignored it again, and a dozen had no popup
+  typography at all, so the popup font and popup size settings simply passed them by. The long-press
+  menu on a Live channel, the Multiview tile menu, the guide's channel chooser, the subtitle
+  appearance dialogs, the Customize dialogs and every Backup & Restore dialog are now built the same
+  way as the rest.
+- **The on-screen keyboard can no longer cover the button you need.** A popup with a text field now
+  measures the space the keyboard leaves and lays itself out inside it. This mattered most in Backup
+  & Restore: the backup password and the profile PIN are typed into a dialog whose *Restore* button
+  the keyboard could hide, with no way to scroll to it.
+- **The remote stays inside an open popup.** A stray Left or Right with nothing to land on could
+  drop focus onto the screen behind the dialog, leaving it open with the highlight somewhere else.
+- **Popups stay translucent at high transparency settings.** A dialog is drawn slightly denser than
+  the panels around it so it reads as being in front. That extra density was a fixed amount added on
+  top of your own Surface transparency, so at 85% it reached 97% and the popup turned solid while
+  the panels beside it were still glass. It is now a proportion of what is left, so a popup follows
+  your setting at every value and can never close up on its own. Cards, focused rows and everything
+  drawn *lighter* than its container are unchanged.
+- **The subtitle-timing panel still leaves the picture undimmed** — it is the one dialog with no
+  wash behind it, deliberately, so speech and subtitles can be compared while the offset is nudged.
+
+### 📺 Protected and MPEG-DASH channels play
+
+- **Channels delivered as MPEG-DASH now play, protected ones included.** Some providers publish a
+  channel at an address that gives no hint of its format and only reveals it once the app asks. The
+  app could only ever guess between two formats, so these channels were opened the wrong way and
+  stopped with a format error before any picture appeared — and because a protected channel can only
+  run on one of the two players, there was nothing left to fall back to. It now recognises the format
+  three ways: from what the playlist says about the channel, from what the provider actually sends
+  back, and from what other channels on the same provider have already turned out to be. Reported by
+  a user with a mixed playlist where the ordinary channels played and these never did.
+- **Stream info said MPEG-TS on a DASH channel.** The Format line only had two possible answers, so
+  the third format was labelled as the wrong one — even on a channel that had failed to start, which
+  is what people were sending in with their reports. It now shows HLS, DASH or MPEG-TS to match what
+  is really being played.
+- **A channel that will not open can now fall back to the provider's own address.** Where a playlist
+  supplies one, it is tried once as the very last resort — after every other recovery step, at the
+  point where the alternative is an error screen. Channels that work today are unaffected: this
+  address is never used first, because providers frequently publish one that only works inside their
+  own network.
+- **Recording a copy-protected channel is refused straight away, and says why.** It used to try, save
+  a file that could not play, and reconnect to the provider for the entire length of the programme —
+  holding one of your allowed connections the whole time. The recording now stops immediately and
+  explains that the protection comes from the provider rather than from OwnTV.
+
+### 🗂️ Restoring a backup during setup asks what to bring back
+
+- **The first-run restore takes only what you tick.** It used to apply the whole file, always —
+  while Settings → Backup & Restore and the local-sync setup step have always offered the list. The
+  same list now appears before anything is applied, whether the file came off a USB stick or was
+  sent from another device, so a restore can bring the playlists and leave the old box's settings
+  behind. It is the same dialog Backup & Restore uses, so the two cannot drift apart. Fixed in core
+  (`core-1.0.52`), so the phone gained it in the same change.
+
+### 🔗 Sync mode could hand the other device a key that did not fit
+
+- **A phone or television set up from this one could fail with "Something went wrong".** When Sync
+  mode had been started more than once, this box answered "who are you" with a newly minted key
+  while still serving the data package built for the previous one — so the far device downloaded
+  something it could not open, and gave up with a message that explained nothing. The key is now
+  published together with the package it opens. A package that genuinely cannot be read also says
+  so now, instead of shrugging. Fixed in core (`core-1.0.52`).
+
+### 📡 A long guide download is no longer stopped by the system
+
+- **The guide sync runs as a foreground job.** It could previously be frozen part-way and then
+  restarted from the beginning — on a large feed, forever. It now announces itself the way downloads
+  and recordings always have. Fixed in core (`core-1.0.52`). This was found on a phone, where
+  aggressive battery management makes it happen within seconds of the screen going dark; the same
+  protection applies here.
+
 ### 🩹 Empty categories fill, catch-up plays, a crash is gone, and Settings search finds everything
 
 - **A category your provider lists no longer arrives empty.** A playlist could offer a category and
@@ -23,6 +191,13 @@
   playlist that recovered 174 channels that had never been delivered. Fixed in core (`core-1.0.45`),
   and it applies to live channels, movies and series on both portal and Xtream playlists. Kids
   profiles hide those categories automatically, exactly as before.
+- **The frame rate shown for a live channel is no longer a notch too low.** A channel sending 25
+  pictures a second could be labelled "24 FPS", because the reading was taken over a single second —
+  short enough that one frame of slack tipped the answer onto the wrong standard rate, and 24 looks
+  as convincing as 25. It now measures over a longer stretch and insists on the same answer twice
+  before showing it. On one television BBC Two Northern Ireland went from 24 FPS to the correct 25,
+  and a 50fps sports channel still reads 50. Fixed in core (`core-1.0.47`). Only the label was ever
+  wrong — the picture was always correct.
 - **Stalker catch-up plays.** Picking a past programme on a portal playlist did nothing at all — no
   picture, no message. The archive request carried a reference the provider could not resolve, so it
   answered with an empty response and the app gave up in silence. Fixed in core (`core-1.0.43`) and
@@ -43,6 +218,57 @@
 - **The user guide explains Multiview.** It says that it is off by default and where to switch it on,
   and the Settings table describes it. Two stale lines were corrected: Quick holds what *you* pin, not
   "the six most-used switches".
+- **The user guide now describes first-run setup exactly as it happens.** It listed five screens
+  where there are eight, folded the "Set up OwnTV" choice into the profile step, and never mentioned
+  the screen that asks whether to enter a playlist by remote or by phone. Adding a playlist from your
+  phone also has an entry of its own under Playlists now — it was described only as part of first-run
+  setup, so anyone who pressed "Skip for now" had no way of discovering it. Both guides also explain
+  that a feed's channel logos can stand in for a playlist that carries none.
+- **The app no longer crashes on opening for people with many manually matched channels.** Every
+  channel you match to a guide by hand is remembered, and the Guide looked all of them up in a single
+  database request. Past roughly a thousand matches that request exceeds SQLite's limit on how many
+  values one query may carry, so it was rejected outright and the app closed — instantly and every
+  time, because the Guide loads as the app starts. The lookup is now made in batches of 500, so it
+  cannot hit the limit however many channels you match. Still one request per batch, so the speed the
+  bulk lookup was written for is unchanged. Reported with a crash log by a user.
+- **Popup font size now resizes the whole popup.** Turning it up, even to the maximum, moved only a
+  few labels: the setting reached the shared text styles and nothing else, so buttons, input fields
+  and any text with a size of its own stayed exactly as they were — which read as a setting that did
+  nothing at all. It is now applied to the popup's text scale itself, so every word inside a dialog or
+  menu follows it. At the larger sizes some labels wrap onto a second line; popups already scroll, so
+  nothing moves out of reach.
+- **Channel logos no longer sit on a black square.** Most provider logos are transparent, and the
+  tile behind them showed through as a dark box around the artwork — worst on a logo drawn in dark
+  ink, which disappeared into it entirely. The tile is now drawn only when there is no logo to show,
+  and the logo itself is measured once so the few that would be unreadable get a backing plate in the
+  opposite shade: light behind a dark logo, dark behind a light one, following the theme. A logo that
+  carries its own background is left alone, and a logo that fails to load falls back to the channel
+  icon instead of an empty box. The tile never changes size, so nothing shifts on screen. Reported by
+  a user; applies to the Live TV list and preview and to the Home screen's channel rows.
+- **The app no longer runs out of memory when the guide is refreshed.** Re-syncing a guide could
+  close the app outright. To draw the eight rows on screen the Guide was reading *every* programme in
+  the database — 349,077 of them on one television — and a refresh restarted that job every few
+  seconds without stopping the previous one, six copies at a time, until there was no memory left. It
+  now reads only the rows actually on screen, remembers a few hundred of them, and waits for a
+  download to finish before redrawing. The Guide opens in under two seconds instead of eight, and
+  each row loads in milliseconds.
+- **"Match EPG" lists guide channels again.** On a channel with no guide the picker could come up
+  empty — "No guide channels match" — while the grid happily drew programmes for that same channel.
+  The picker was filtering by which playlist delivered the guide; nothing else was. It now offers
+  every guide channel the app holds, including feeds that list programmes without naming their
+  channels.
+- **Searching the guide picker understands names.** Typing `bbc1` now finds "BBC One"; a lowercase
+  Cyrillic or Greek search now finds an uppercase name, which it never could before.
+- **Your manual EPG matches survive deleting and re-adding a playlist.** Every match was remembered
+  against the playlist's internal id, so re-importing the same playlist quietly orphaned all of them.
+- **Auto-match no longer reports success it cannot deliver.** It skipped channels whose guide id
+  existed but held no programmes, and silently applied matches onto empty guide channels. Those now
+  go to the review list instead.
+- **Duplicate programmes are removed when the guide is downloaded** rather than hidden on every read
+  — 16,080 of them on one sync.
+- **The Live TV list stops re-asking what is on.** Scrolling a large category re-queried every
+  channel already on screen on every page, and again every minute. It now asks only about channels it
+  has not seen, and refreshes on the minute so every row changes together.
 
 ## v5.0.0 — 2026-09-14
 

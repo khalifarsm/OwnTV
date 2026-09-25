@@ -265,7 +265,7 @@ internal fun ProgrammeDetailDialog(
             // The dialog can be opened by a long-press on the programme cell; the OK key is often still
             // held when it appears, which would instantly fire the focused action. Swallow OK until it's
             // released once so the held long-press only reveals the dialog, then the user chooses.
-            Modifier.fillMaxSize().modalScrim().longPressMenuGuard(),
+            Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup().longPressMenuGuard(),
             contentAlignment = Alignment.Center,
         ) {
             // Scrollable: long XMLTV descriptions can exceed a small screen's height. widthIn (not a

@@ -192,6 +192,7 @@ class SearchViewModel(
                 userAgent = source?.userAgent,
                 httpHeaders = movie.httpHeaders,
                 drmConfig = movie.drmConfig,
+                manifestType = movie.manifestType,
                 // P6 — same stable engine-pin identity MovieViewModel uses, so a pin made in one
                 // screen applies in the other.
                 contentKey = tv.own.owntv.core.player.enginePinKey(movie.sourceId, "MOVIE", movie.remoteId),

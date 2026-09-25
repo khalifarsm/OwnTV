@@ -105,7 +105,7 @@ fun NumberInputDialog(
         onDismiss()
     }
 
-    tv.own.owntv.ui.theme.PopupFontTheme {
+    OwnTVPopup(onDismissRequest = onDismiss) {
         Box(Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(), contentAlignment = Alignment.Center) {
             Column(
                 modifier = Modifier.dialogPanel(width = 320.dp, corner = 16.dp, padding = 16.dp),

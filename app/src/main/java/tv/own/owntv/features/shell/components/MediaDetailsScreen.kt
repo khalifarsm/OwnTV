@@ -64,6 +64,7 @@ data class MediaDetailsUi(
     val title: String,
     val subtitle: String? = null,       // e.g. "S2 · E5 · aired 2019-04-14"
     val backdropUrl: String? = null,    // 16:9 hero
+    val logoUrl: String? = null,        // title-logo artwork; null means "draw the title as text"
     val posterUrl: String? = null,      // 2:3 poster (or 16:9 still for episodes)
     val metaLine: String = "",          // "2026 · ★ 7.6 · 2h 10m"
     val genres: List<String> = emptyList(),

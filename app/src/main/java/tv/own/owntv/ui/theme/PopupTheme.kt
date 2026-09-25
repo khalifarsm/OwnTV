@@ -31,11 +31,16 @@ fun PopupFontTheme(fontScale: Float = 1f, content: @Composable () -> Unit) {
     }
     val baseDensity = LocalDensity.current
     val popupSizeScale = LocalPopupSizeScaleFactor.current
+    // The user's popup font size rides on the density's fontScale, not on the typography slots, so it
+    // reaches every sp inside the popup — hardcoded sizes and unstyled Text included. Multiplying the
+    // typography alone left buttons and input fields untouched, which read as "the setting does nothing".
     val popupDensity = Density(
         density = baseDensity.density * popupSizeScale,
-        fontScale = baseDensity.fontScale / (popupSizeScale * LocalUiFontScaleFactor.current),
+        fontScale = baseDensity.fontScale * LocalPopupFontScaleFactor.current /
+            (popupSizeScale * LocalUiFontScaleFactor.current),
     )
-    val effectiveFontScale = fontScale * LocalPopupFontScaleFactor.current
+    // Only the caller's fixed design scale (0.70 host / 0.75 dense menus / 0.50 forms) stays here.
+    val effectiveFontScale = fontScale
     val t = MaterialTheme.typography
     val popupFamily = LocalPopupFontFamily.current
     fun androidx.compose.ui.text.TextStyle.popup() = copy(

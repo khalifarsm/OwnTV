@@ -64,7 +64,7 @@ fun SubtitleDeletePopup(
         runCatching { firstFocus.requestFocus() }
     }
     BackHandler { onDismiss() }
-    PopupFontTheme {
+    tv.own.owntv.ui.components.OwnTVPopup(onDismissRequest = onDismiss) {
         Box(
             Modifier.fillMaxSize().modalScrim().trapAllFocusExit().focusGroup(),
             contentAlignment = Alignment.Center,
