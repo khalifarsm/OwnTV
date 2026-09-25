@@ -201,7 +201,7 @@ def move_package_tree(src_base, old_pkg, new_pkg):
     if not os.path.isdir(old_dir):
         return
     new_dir = os.path.join(src_base, *new_pkg.split("."))
-    os.makedirs(os.path.dirname(new_dir), exist_ok=True)
+    os.makedirs(new_dir, exist_ok=True)
     for entry in os.listdir(old_dir):
         if entry in KEEP_PKG_DIRS:
             continue
