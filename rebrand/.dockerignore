@@ -1,0 +1,5 @@
+**
+!Dockerfile
+!rebrand.py
+!entrypoint.sh
+.env
